@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TrackedUrl {
+  id        Int       @id @default(autoincrement())
+  url       String    @unique
+  title     String
+  category  String    @default("Advertising")
+  status    String    @default("active") // active, growing, declining, recovering
+  priority  String    @default("medium") // urgent, high, medium, low
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  keywords  Keyword[]
+  notes     Note[]
+
+  @@map("tracked_urls")
+}
+
+model Keyword {
+  id        Int       @id @default(autoincrement())
+  urlId     Int       @map("url_id")
+  keyword   String
+  source    String    @default("manual") // manual, gsc
+  intent    String    @default("commercial") // informational, commercial, transactional, navigational
+  tracked   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  trackedUrl TrackedUrl      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  snapshots  WeeklySnapshot[]
+  alerts     Alert[]
+
+  @@unique([urlId, keyword])
+  @@map("keywords")
+}
+
+model WeeklySnapshot {
+  id            Int      @id @default(autoincrement())
+  keywordId     Int      @map("keyword_id")
+  weekStarting  DateTime @map("week_starting")
+  
+  // GSC data
+  gscPosition   Float?   @map("gsc_position")
+  gscClicks     Int      @default(0) @map("gsc_clicks")
+  gscImpressions Int     @default(0) @map("gsc_impressions")
+  gscCtr        Float?   @map("gsc_ctr")
+  
+  // DataForSEO data
+  serpPosition  Int?     @map("serp_position")
+  serpFeatures  String?  @map("serp_features") // comma-separated: featured_snippet,paa,etc
+  
+  // Computed
+  prevPosition  Int?     @map("prev_position")
+  posChange     Int      @default(0) @map("pos_change")
+  
+  createdAt     DateTime @default(now())
+
+  keyword       Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, weekStarting])
+  @@index([weekStarting])
+  @@map("weekly_snapshots")
+}
+
+model Alert {
+  id        Int      @id @default(autoincrement())
+  keywordId Int      @map("keyword_id")
+  alertDate DateTime @default(now()) @map("alert_date")
+  type      String   // position_drop, left_page1, click_drop, recovery, new_top3, gradual_decline
+  severity  String   // critical, warning, positive
+  details   String
+  action    String?
+  status    String   @default("open") // open, in_progress, planned, on_hold, monitoring, resolved
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt DateTime @default(now())
+
+  keyword   Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([alertDate])
+  @@index([severity])
+  @@map("alerts")
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  urlId     Int      @map("url_id")
+  text      String
+  createdAt DateTime @default(now())
+
+  trackedUrl TrackedUrl @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  @@index([urlId])
+  @@map("notes")
+}
+
+model Config {
+  id    Int    @id @default(1)
+  key   String @unique
+  value String
+
+  @@map("config")
+}
