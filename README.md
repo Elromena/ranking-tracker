@@ -179,3 +179,4 @@ npm run cron
 - **alerts** — triggered alerts with severity, status, and action tracking
 - **notes** — changelog entries per URL
 - **config** — app settings (thresholds, toggles, etc.)
+# ranking-tracker
