@@ -2170,13 +2170,27 @@ function ConfigPage() {
       >
         <Section
           title="🔗 Data Sources"
-          desc="Connect your GSC and DataForSEO accounts"
+          desc="DataForSEO for rankings (required) • GSC for traffic data (optional)"
         >
+          <div
+            style={{
+              padding: 12,
+              background: "#f0fdf4",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "#15803d",
+              marginBottom: 12,
+              borderLeft: "3px solid #22c55e",
+            }}
+          >
+            ✅ <strong>Rankings tracked with DataForSEO only</strong><br/>
+            GSC is optional — only needed if you want traffic metrics (clicks, impressions, CTR)
+          </div>
           <Input
-            label="GSC Property URL"
+            label="GSC Property URL (Optional - For Traffic Data)"
             value={cfg.gscProperty || ""}
             onChange={(v) => u("gscProperty", v)}
-            placeholder="https://your-site.com"
+            placeholder="https://your-site.com or leave empty"
           />
           
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -2377,10 +2391,10 @@ function ConfigPage() {
             }}
           >
             💡 <strong>API keys are set via environment variables</strong> on
-            Railway, not here. This keeps them secure. Set:{" "}
-            <code>GSC_CREDENTIALS</code>, <code>DATAFORSEO_LOGIN</code>,{" "}
-            <code>DATAFORSEO_PASSWORD</code>, <code>TELEGRAM_BOT_TOKEN</code>,{" "}
-            <code>TELEGRAM_CHAT_ID</code>
+            Railway, not here. This keeps them secure.<br/><br/>
+            <strong>Required:</strong> <code>DATAFORSEO_LOGIN</code>, <code>DATAFORSEO_PASSWORD</code><br/>
+            <strong>Optional:</strong> <code>GSC_CREDENTIALS</code> (only for traffic data),{" "}
+            <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code> (for alerts)
           </div>
         </Section>
       </div>
@@ -2430,12 +2444,24 @@ function ConfigPage() {
         }}
       >
         <Section
-          title="🤖 Auto-Discovery"
-          desc="Let the script auto-discover keywords from GSC"
+          title="🤖 Auto-Discovery (Optional - Requires GSC)"
+          desc="Auto-discover keywords from GSC traffic data"
         >
+          <div
+            style={{
+              padding: 10,
+              background: "#fef3c7",
+              borderRadius: 6,
+              fontSize: 11,
+              color: "#92400e",
+              marginBottom: 10,
+            }}
+          >
+            ⚠️ This feature requires GSC configuration. Manually add keywords if GSC not set up.
+          </div>
           <Toggle
             label="Auto-add GSC keywords"
-            desc="Track new keywords that surface in GSC top queries"
+            desc="Track new keywords that surface in GSC top queries (needs GSC)"
             checked={cfg.autoAddGsc !== "false"}
             onChange={(v) => u("autoAddGsc", String(v))}
           />

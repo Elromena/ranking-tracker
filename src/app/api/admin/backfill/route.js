@@ -1,7 +1,18 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getSearchAnalytics, formatDate } from "@/lib/gsc";
 import { batchSerpPositions, getHistoricalSerpPositions } from "@/lib/dataforseo";
+
+// GSC is optional - only for traffic data
+let getSearchAnalytics, formatDate;
+try {
+  const gsc = await import("@/lib/gsc");
+  getSearchAnalytics = gsc.getSearchAnalytics;
+  formatDate = gsc.formatDate;
+} catch (e) {
+  // Fallback formatDate if GSC not available
+  formatDate = (date) => date.toISOString().split('T')[0];
+  console.log("GSC module not available, using DataForSEO only");
+}
 
 /**
  * POST /api/admin/backfill
@@ -92,24 +103,7 @@ export async function POST(request) {
           continue;
         }
 
-        // 4a. Pull GSC data for this week
-        let gscData = {};
-        try {
-          const gscResults = await getSearchAnalytics({
-            url: url.url,
-            startDate: formatDate(startDate),
-            endDate: formatDate(endDate),
-            keywords: kwStrings,
-          });
-          for (const r of gscResults) {
-            gscData[r.keyword.toLowerCase()] = r;
-          }
-          log.push(`  ${url.title}: GSC returned ${gscResults.length} keywords`);
-        } catch (e) {
-          log.push(`  ${url.title}: GSC error - ${e.message}`);
-        }
-
-        // 4b. Pull DataForSEO positions
+        // 4a. Pull DataForSEO positions (PRIMARY SOURCE)
         let dfsData = {};
         if (weekOffset === 0 || useHistoricalSerp) {
           try {
@@ -144,6 +138,25 @@ export async function POST(request) {
           log.push(`  ${url.title}: Skipping DFS for historical week (using GSC position only)`);
         }
 
+        // 4b. Pull GSC traffic data (OPTIONAL)
+        let gscData = {};
+        if (getSearchAnalytics) {
+          try {
+            const gscResults = await getSearchAnalytics({
+              url: url.url,
+              startDate: formatDate(startDate),
+              endDate: formatDate(endDate),
+              keywords: kwStrings,
+            });
+            for (const r of gscResults) {
+              gscData[r.keyword.toLowerCase()] = r;
+            }
+            log.push(`  ${url.title}: GSC traffic data - ${gscResults.length} keywords`);
+          } catch (e) {
+            log.push(`  ${url.title}: GSC skipped - ${e.message}`);
+          }
+        }
+
         // 4c. Get previous week's snapshot for comparison
         const prevWeekStart = new Date(weekStarting);
         prevWeekStart.setDate(prevWeekStart.getDate() - 7);
@@ -164,12 +177,13 @@ export async function POST(request) {
 
         // 4d. Create or update snapshots
         for (const kw of url.keywords) {
-          const gsc = gscData[kw.keyword.toLowerCase()] || {};
           const dfs = dfsData[kw.keyword] || {};
+          const gsc = gscData[kw.keyword.toLowerCase()] || {};
           const prevSnapshot = prevSnapshotMap[kw.id];
           
+          // PRIMARY: DataForSEO SERP position
           const prevPos = prevSnapshot?.serpPosition || null;
-          const currentPos = weekOffset === 0 ? (dfs.position || null) : null;
+          const currentPos = dfs.position || null;
           const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
 
           // Check if snapshot already exists
@@ -191,14 +205,16 @@ export async function POST(request) {
             data: {
               keywordId: kw.id,
               weekStarting,
-              gscPosition: gsc.position || null,
-              gscClicks: gsc.clicks || 0,
-              gscImpressions: gsc.impressions || 0,
-              gscCtr: gsc.ctr || null,
+              // PRIMARY: DataForSEO SERP data
               serpPosition: currentPos,
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
+              // OPTIONAL: GSC traffic data
+              gscPosition: gsc.position || null,
+              gscClicks: gsc.clicks || 0,
+              gscImpressions: gsc.impressions || 0,
+              gscCtr: gsc.ctr || null,
             },
           });
 

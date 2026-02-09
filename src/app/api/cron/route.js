@@ -1,8 +1,18 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getSearchAnalytics, getLastWeekRange, getTopQueries } from "@/lib/gsc";
 import { batchSerpPositions } from "@/lib/dataforseo";
 import { sendMessage, formatWeeklyReport } from "@/lib/telegram";
+
+// GSC is optional - only used for traffic data (clicks/impressions)
+let getSearchAnalytics, getLastWeekRange, getTopQueries;
+try {
+  const gsc = await import("@/lib/gsc");
+  getSearchAnalytics = gsc.getSearchAnalytics;
+  getLastWeekRange = gsc.getLastWeekRange;
+  getTopQueries = gsc.getTopQueries;
+} catch (e) {
+  console.log("GSC module not available, traffic data will be skipped");
+}
 
 // POST /api/cron — run the weekly data collection
 // Protected by CRON_SECRET header
@@ -59,30 +69,19 @@ export async function POST(request) {
     weekStarting.setDate(weekStarting.getDate() - weekStarting.getDay() + 1); // Monday
     weekStarting.setHours(0, 0, 0, 0);
 
-    const { startDate, endDate } = getLastWeekRange();
+    // Get date range for GSC (if available)
+    let startDate, endDate;
+    if (getLastWeekRange) {
+      const range = getLastWeekRange();
+      startDate = range.startDate;
+      endDate = range.endDate;
+    }
 
     // 3. Process each URL
     for (const url of urls) {
       const kwStrings = url.keywords.map((k) => k.keyword);
 
-      // 3a. Pull GSC data
-      let gscData = {};
-      try {
-        const gscResults = await getSearchAnalytics({
-          url: url.url,
-          startDate,
-          endDate,
-          keywords: kwStrings,
-        });
-        for (const r of gscResults) {
-          gscData[r.keyword.toLowerCase()] = r;
-        }
-        log.push(`GSC: ${url.title} — ${gscResults.length} keyword results`);
-      } catch (e) {
-        log.push(`GSC ERROR: ${url.title} — ${e.message}`);
-      }
-
-      // 3b. Pull DataForSEO positions
+      // 3a. Pull DataForSEO positions (PRIMARY SOURCE)
       let dfsData = {};
       try {
         dfsData = await batchSerpPositions({
@@ -92,22 +91,45 @@ export async function POST(request) {
           language,
         });
         log.push(
-          `DFS: ${url.title} — ${Object.keys(dfsData).length} keyword results`,
+          `✓ DataForSEO: ${url.title} — ${Object.keys(dfsData).length} keyword positions`,
         );
       } catch (e) {
-        log.push(`DFS ERROR: ${url.title} — ${e.message}`);
+        log.push(`✗ DataForSEO ERROR: ${url.title} — ${e.message}`);
+      }
+
+      // 3b. Pull GSC data (OPTIONAL - only for traffic metrics)
+      let gscData = {};
+      if (getSearchAnalytics && startDate && endDate) {
+        try {
+          const gscResults = await getSearchAnalytics({
+            url: url.url,
+            startDate,
+            endDate,
+            keywords: kwStrings,
+          });
+          for (const r of gscResults) {
+            gscData[r.keyword.toLowerCase()] = r;
+          }
+          log.push(`✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`);
+        } catch (e) {
+          log.push(`⚠ GSC skipped: ${e.message}`);
+        }
+      } else {
+        log.push(`⚠ GSC not configured — traffic data unavailable`);
       }
 
       // 3c. Write snapshots and detect alerts
       for (const kw of url.keywords) {
-        const gsc = gscData[kw.keyword.toLowerCase()] || {};
         const dfs = dfsData[kw.keyword] || {};
+        const gsc = gscData[kw.keyword.toLowerCase()] || {};
         const prevSnapshot = kw.snapshots?.[0];
+        
+        // PRIMARY: DataForSEO SERP position
         const prevPos = prevSnapshot?.serpPosition || null;
         const currentPos = dfs.position || null;
         const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
 
-        // Write snapshot
+        // Write snapshot (DataForSEO is required, GSC is optional)
         await prisma.weeklySnapshot.upsert({
           where: {
             keywordId_weekStarting: {
@@ -118,24 +140,28 @@ export async function POST(request) {
           create: {
             keywordId: kw.id,
             weekStarting,
-            gscPosition: gsc.position || null,
-            gscClicks: gsc.clicks || 0,
-            gscImpressions: gsc.impressions || 0,
-            gscCtr: gsc.ctr || null,
+            // PRIMARY: DataForSEO SERP data
             serpPosition: currentPos,
             serpFeatures: dfs.serpFeatures?.join(",") || null,
             prevPosition: prevPos,
             posChange,
+            // OPTIONAL: GSC traffic data
+            gscPosition: gsc.position || null,
+            gscClicks: gsc.clicks || 0,
+            gscImpressions: gsc.impressions || 0,
+            gscCtr: gsc.ctr || null,
           },
           update: {
-            gscPosition: gsc.position || null,
-            gscClicks: gsc.clicks || 0,
-            gscImpressions: gsc.impressions || 0,
-            gscCtr: gsc.ctr || null,
+            // PRIMARY: DataForSEO SERP data
             serpPosition: currentPos,
             serpFeatures: dfs.serpFeatures?.join(",") || null,
             prevPosition: prevPos,
             posChange,
+            // OPTIONAL: GSC traffic data
+            gscPosition: gsc.position || null,
+            gscClicks: gsc.clicks || 0,
+            gscImpressions: gsc.impressions || 0,
+            gscCtr: gsc.ctr || null,
           },
         });
 
@@ -228,8 +254,8 @@ export async function POST(request) {
         }
       }
 
-      // 3e. Auto-discover new keywords from GSC
-      if (autoAddGsc) {
+      // 3e. Auto-discover new keywords from GSC (optional feature)
+      if (autoAddGsc && getTopQueries && startDate && endDate) {
         try {
           const existingKws = new Set(
             url.keywords.map((k) => k.keyword.toLowerCase()),
@@ -258,10 +284,12 @@ export async function POST(request) {
             added++;
           }
           if (added > 0)
-            log.push(`Auto-added ${added} keywords for ${url.title}`);
+            log.push(`✓ Auto-added ${added} keywords for ${url.title}`);
         } catch (e) {
-          log.push(`Auto-discovery error for ${url.title}: ${e.message}`);
+          log.push(`⚠ Auto-discovery skipped: ${e.message}`);
         }
+      } else if (autoAddGsc) {
+        log.push(`⚠ Auto-discovery requires GSC configuration`);
       }
 
       // Update URL status based on trends
