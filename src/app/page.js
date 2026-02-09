@@ -1974,7 +1974,13 @@ function ConfigPage() {
     setCronRunning(true);
     setCronResult(null);
     try {
-      const result = await api("/cron", { method: "POST" });
+      const result = await api("/cron", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-cron-secret": "your-random-secret-here",
+        },
+      });
       setCronResult(result);
     } catch (e) {
       setCronResult({ ok: false, error: e.message });

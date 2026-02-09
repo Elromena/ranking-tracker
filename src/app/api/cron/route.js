@@ -8,6 +8,7 @@ import { sendMessage, formatWeeklyReport } from "@/lib/telegram";
 // Protected by CRON_SECRET header
 export async function POST(request) {
   // Simple auth check
+
   const secret = request.headers.get("x-cron-secret");
   if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
