@@ -2019,6 +2019,7 @@ function AlertsView({ onSelectUrl }) {
 function ConfigPage() {
   const [cfg, setCfg] = useState({});
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [cronRunning, setCronRunning] = useState(false);
   const [cronResult, setCronResult] = useState(null);
@@ -2042,8 +2043,18 @@ function ConfigPage() {
   };
 
   const save = async () => {
-    await api("/config", { method: "PUT", body: JSON.stringify(cfg) });
-    setSaved(true);
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api("/config", { method: "PUT", body: JSON.stringify(cfg) });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000); // Hide after 3 seconds
+    } catch (e) {
+      alert(`Failed to save configuration: ${e.message}`);
+      console.error("Save error:", e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const runCron = async () => {
@@ -2571,10 +2582,12 @@ function ConfigPage() {
       </div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Btn onClick={save}>Save Configuration</Btn>
+        <Btn onClick={save} variant={saving ? "secondary" : "primary"}>
+          {saving ? "⏳ Saving..." : "💾 Save Configuration"}
+        </Btn>
         {saved && (
           <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>
-            ✓ Saved
+            ✅ Saved successfully!
           </span>
         )}
       </div>
