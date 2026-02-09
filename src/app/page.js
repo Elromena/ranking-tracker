@@ -2026,6 +2026,8 @@ function ConfigPage() {
   const [gscTestResult, setGscTestResult] = useState(null);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState(null);
+  const [listingSites, setListingSites] = useState(false);
+  const [sitesResult, setSitesResult] = useState(null);
 
   useEffect(() => {
     api("/config").then((d) => {
@@ -2086,6 +2088,19 @@ function ConfigPage() {
     setBackfilling(false);
   };
 
+  const listGSCSites = async () => {
+    setListingSites(true);
+    setSitesResult(null);
+    try {
+      const result = await fetch("/api/gsc/list-sites");
+      const data = await result.json();
+      setSitesResult(data);
+    } catch (e) {
+      setSitesResult({ success: false, error: e.message });
+    }
+    setListingSites(false);
+  };
+
   if (loading) return <Loading />;
 
   const Section = ({ title, desc, children }) => (
@@ -2126,7 +2141,14 @@ function ConfigPage() {
             placeholder="https://your-site.com"
           />
           
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <Btn
+              onClick={listGSCSites}
+              variant={listingSites ? "secondary" : "secondary"}
+              size="sm"
+            >
+              {listingSites ? "⏳ Loading..." : "📋 List My GSC Sites"}
+            </Btn>
             <Btn
               onClick={testGSC}
               variant={gscTesting ? "secondary" : "secondary"}
@@ -2135,9 +2157,99 @@ function ConfigPage() {
               {gscTesting ? "⏳ Testing..." : "🔍 Test GSC Connection"}
             </Btn>
             <span style={{ fontSize: 11, color: "#94a3b8" }}>
-              Verify your GSC credentials are working
+              List available sites or test connection
             </span>
           </div>
+
+          {sitesResult && (
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 8,
+                background: sitesResult.success ? "#ecfdf5" : "#fef2f2",
+                fontSize: 12,
+              }}
+            >
+              {sitesResult.success ? (
+                <>
+                  <div style={{ fontWeight: 700, color: "#059669", marginBottom: 8 }}>
+                    ✅ Found {sitesResult.count} GSC {sitesResult.count === 1 ? 'property' : 'properties'}
+                  </div>
+                  {sitesResult.serviceAccountEmail && (
+                    <div style={{ color: "#065f46", marginBottom: 8, fontSize: 11 }}>
+                      Service Account: {sitesResult.serviceAccountEmail}
+                    </div>
+                  )}
+                  {sitesResult.sites && sitesResult.sites.length > 0 ? (
+                    <>
+                      <div style={{ color: "#065f46", marginBottom: 6, fontWeight: 600 }}>
+                        Available properties:
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {sitesResult.sites.map((site, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              padding: 10,
+                              background: "#fff",
+                              borderRadius: 6,
+                              border: "1px solid #d1fae5",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#059669", fontWeight: 600 }}>
+                                {site.siteUrl}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                                Permission: {site.permissionLevel}
+                              </div>
+                            </div>
+                            <Btn
+                              size="sm"
+                              onClick={() => {
+                                u("gscProperty", site.siteUrl);
+                                setSitesResult(null);
+                              }}
+                            >
+                              Use This
+                            </Btn>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: "#065f46", marginTop: 4 }}>
+                      {sitesResult.hint}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
+                    ❌ {sitesResult.error || "Failed to list sites"}
+                  </div>
+                  {sitesResult.hint && (
+                    <div style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
+                      💡 {sitesResult.hint}
+                    </div>
+                  )}
+                  {sitesResult.details && (
+                    <div style={{ color: "#991b1b", marginTop: 6, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>
+                      {sitesResult.details}
+                    </div>
+                  )}
+                  {sitesResult.serviceAccountEmail && (
+                    <div style={{ color: "#991b1b", marginTop: 6, fontSize: 11 }}>
+                      Add this email to GSC: {sitesResult.serviceAccountEmail}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {gscTestResult && (
             <div
