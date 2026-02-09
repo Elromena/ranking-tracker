@@ -1952,6 +1952,8 @@ function ConfigPage() {
   const [loading, setLoading] = useState(true);
   const [cronRunning, setCronRunning] = useState(false);
   const [cronResult, setCronResult] = useState(null);
+  const [gscTesting, setGscTesting] = useState(false);
+  const [gscTestResult, setGscTestResult] = useState(null);
 
   useEffect(() => {
     api("/config").then((d) => {
@@ -1974,18 +1976,27 @@ function ConfigPage() {
     setCronRunning(true);
     setCronResult(null);
     try {
-      const result = await api("/cron", {
+      const result = await api("/admin/trigger-cron", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-cron-secret": "your-random-secret-here",
-        },
       });
       setCronResult(result);
     } catch (e) {
       setCronResult({ ok: false, error: e.message });
     }
     setCronRunning(false);
+  };
+
+  const testGSC = async () => {
+    setGscTesting(true);
+    setGscTestResult(null);
+    try {
+      const result = await fetch("/api/test-gsc");
+      const data = await result.json();
+      setGscTestResult(data);
+    } catch (e) {
+      setGscTestResult({ success: false, errors: [e.message] });
+    }
+    setGscTesting(false);
   };
 
   if (loading) return <Loading />;
@@ -2027,6 +2038,72 @@ function ConfigPage() {
             onChange={(v) => u("gscProperty", v)}
             placeholder="https://your-site.com"
           />
+          
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <Btn
+              onClick={testGSC}
+              variant={gscTesting ? "secondary" : "secondary"}
+              size="sm"
+            >
+              {gscTesting ? "⏳ Testing..." : "🔍 Test GSC Connection"}
+            </Btn>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>
+              Verify your GSC credentials are working
+            </span>
+          </div>
+
+          {gscTestResult && (
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 8,
+                background: gscTestResult.success ? "#ecfdf5" : "#fef2f2",
+                fontSize: 12,
+              }}
+            >
+              {gscTestResult.success ? (
+                <>
+                  <div style={{ fontWeight: 700, color: "#059669" }}>
+                    ✅ GSC Connection Working!
+                  </div>
+                  {gscTestResult.info?.serviceAccountEmail && (
+                    <div style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}>
+                      Service Account: {gscTestResult.info.serviceAccountEmail}
+                    </div>
+                  )}
+                  {gscTestResult.info?.rowCount !== undefined && (
+                    <div style={{ color: "#065f46", marginTop: 4 }}>
+                      Retrieved {gscTestResult.info.rowCount} keywords from GSC
+                    </div>
+                  )}
+                  {gscTestResult.info?.sampleKeywords && gscTestResult.info.sampleKeywords.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#064e3b" }}>
+                      <strong>Sample keywords:</strong>
+                      <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+                        {gscTestResult.info.sampleKeywords.map((kw, i) => (
+                          <li key={i}>
+                            {kw.keyword} - Pos: {kw.position}, Clicks: {kw.clicks}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, color: "#dc2626" }}>
+                    ❌ GSC Connection Failed
+                  </div>
+                  {gscTestResult.errors && gscTestResult.errors.map((err, i) => (
+                    <div key={i} style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
+                      • {err}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
           <div
             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
           >
