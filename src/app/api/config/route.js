@@ -13,18 +13,38 @@ export async function GET() {
 
 // PUT /api/config — save config (bulk upsert)
 export async function PUT(request) {
-  const body = await request.json();
+  try {
+    const body = await request.json();
 
-  // Upsert each key-value pair
-  const operations = Object.entries(body).map(([key, value]) =>
-    prisma.config.upsert({
-      where: { key },
-      create: { key, value: String(value) },
-      update: { value: String(value) },
-    })
-  );
+    // Validate that body is an object
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { ok: false, error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
 
-  await prisma.$transaction(operations);
+    // Upsert each key-value pair
+    const operations = Object.entries(body).map(([key, value]) =>
+      prisma.config.upsert({
+        where: { key },
+        create: { key, value: String(value) },
+        update: { value: String(value) },
+      })
+    );
 
-  return NextResponse.json({ ok: true });
+    await prisma.$transaction(operations);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Config save error:', error);
+    return NextResponse.json(
+      { 
+        ok: false, 
+        error: error.message || 'Failed to save configuration',
+        details: error.toString()
+      },
+      { status: 500 }
+    );
+  }
 }
