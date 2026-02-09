@@ -41,10 +41,16 @@ export async function POST(request) {
     const autoAddMinImpr = parseInt(cfg.autoAddMinImpr || "100");
     const maxKwPerUrl = parseInt(cfg.maxKwPerUrl || "10");
 
-    const targetDomain = (cfg.gscProperty || process.env.GSC_PROPERTY || "")
+    // Extract clean domain for DataForSEO matching
+    const rawDomain = cfg.targetDomain || cfg.gscProperty || process.env.GSC_PROPERTY || "";
+    const targetDomain = rawDomain
+      .replace("sc-domain:", "")
       .replace("https://", "")
       .replace("http://", "")
+      .replace("www.", "")
       .replace(/\/$/, "");
+    
+    log.push(`Target domain: ${targetDomain}`);
 
     // 2. Get all tracked URLs with their keywords
     const urls = await prisma.trackedUrl.findMany({

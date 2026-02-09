@@ -44,10 +44,17 @@ export async function POST(request) {
 
     const country = cfg.dfsCountry || "us";
     const language = cfg.dfsLanguage || "en";
-    const targetDomain = (cfg.gscProperty || process.env.GSC_PROPERTY || "")
+    
+    // Extract clean domain for DataForSEO matching
+    const rawDomain = cfg.targetDomain || cfg.gscProperty || process.env.GSC_PROPERTY || "";
+    const targetDomain = rawDomain
+      .replace("sc-domain:", "")
       .replace("https://", "")
       .replace("http://", "")
+      .replace("www.", "")
       .replace(/\/$/, "");
+    
+    log.push(`Target domain: ${targetDomain}`);
 
     // 2. Get URLs to process
     let urls;

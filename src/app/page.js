@@ -2053,6 +2053,10 @@ function ConfigPage() {
   const [listingSites, setListingSites] = useState(false);
   const [sitesResult, setSitesResult] = useState(null);
   const [useHistoricalSerp, setUseHistoricalSerp] = useState(true);
+  const [dfsTesting, setDfsTesting] = useState(false);
+  const [dfsTestResult, setDfsTestResult] = useState(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState(null);
 
   useEffect(() => {
     api("/config").then((d) => {
@@ -2126,6 +2130,35 @@ function ConfigPage() {
     setBackfilling(false);
   };
 
+  const testDFS = async () => {
+    setDfsTesting(true);
+    setDfsTestResult(null);
+    try {
+      // Use first keyword from first tracked URL, or a default
+      const result = await api("/admin/test-dfs", {
+        method: "POST",
+        body: JSON.stringify({ keyword: "crypto affiliate programs" }),
+      });
+      setDfsTestResult(result);
+    } catch (e) {
+      setDfsTestResult({ ok: false, error: e.message });
+    }
+    setDfsTesting(false);
+  };
+
+  const clearSnapshots = async () => {
+    if (!confirm("This will delete ALL ranking snapshots and alerts. Are you sure?")) return;
+    setClearing(true);
+    setClearResult(null);
+    try {
+      const result = await api("/admin/clear-snapshots", { method: "POST" });
+      setClearResult(result);
+    } catch (e) {
+      setClearResult({ ok: false, error: e.message });
+    }
+    setClearing(false);
+  };
+
   const listGSCSites = async () => {
     setListingSites(true);
     setSitesResult(null);
@@ -2172,25 +2205,20 @@ function ConfigPage() {
           title="🔗 Data Sources"
           desc="DataForSEO for rankings (required) • GSC for traffic data (optional)"
         >
-          <div
-            style={{
-              padding: 12,
-              background: "#f0fdf4",
-              borderRadius: 8,
-              fontSize: 12,
-              color: "#15803d",
-              marginBottom: 12,
-              borderLeft: "3px solid #22c55e",
-            }}
-          >
-            ✅ <strong>Rankings tracked with DataForSEO only</strong><br/>
-            GSC is optional — only needed if you want traffic metrics (clicks, impressions, CTR)
+          <Input
+            label="Target Domain"
+            value={cfg.targetDomain || ""}
+            onChange={(v) => u("targetDomain", v)}
+            placeholder="blockchain-ads.com"
+          />
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: -8 }}>
+            Your domain name without www or https — used to find your articles in SERP results
           </div>
           <Input
             label="GSC Property URL (Optional - For Traffic Data)"
             value={cfg.gscProperty || ""}
             onChange={(v) => u("gscProperty", v)}
-            placeholder="https://your-site.com or leave empty"
+            placeholder="Leave empty if not using GSC"
           />
           
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -2517,16 +2545,78 @@ function ConfigPage() {
         }}
       >
         <Section title="🛠 Manual Actions">
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <Btn
-              onClick={runCron}
-              variant={cronRunning ? "secondary" : "primary"}
+              onClick={testDFS}
+              variant={dfsTesting ? "secondary" : "secondary"}
+              size="sm"
             >
-              {cronRunning ? "⏳ Running..." : "▶ Run Data Collection Now"}
+              {dfsTesting ? "⏳ Testing..." : "🔍 Test DataForSEO"}
             </Btn>
             <span style={{ fontSize: 11, color: "#94a3b8" }}>
-              Manually trigger the weekly cron job
+              Check if DataForSEO can find your domain in SERP results
             </span>
+          </div>
+          {dfsTestResult && (
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 8,
+                background: dfsTestResult.found ? "#ecfdf5" : "#fef2f2",
+                fontSize: 12,
+              }}
+            >
+              {dfsTestResult.found ? (
+                <>
+                  <div style={{ fontWeight: 700, color: "#059669" }}>
+                    ✅ Found! Position #{dfsTestResult.position}
+                  </div>
+                  <div style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}>
+                    Keyword: {dfsTestResult.keyword}
+                  </div>
+                  <div style={{ color: "#065f46", marginTop: 2, fontSize: 11 }}>
+                    Target Domain: {dfsTestResult.targetDomain}
+                  </div>
+                  <div style={{ color: "#065f46", marginTop: 2, fontSize: 11 }}>
+                    Found URL: {dfsTestResult.foundUrl}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, color: "#dc2626" }}>
+                    {dfsTestResult.ok
+                      ? `❌ Domain "${dfsTestResult.targetDomain}" not found in top 100 for "${dfsTestResult.keyword}"`
+                      : `❌ Error: ${dfsTestResult.error}`}
+                  </div>
+                  {dfsTestResult.ok && (
+                    <div style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
+                      Check that Target Domain in Data Sources matches your actual domain.
+                      <br/>Raw config: {dfsTestResult.rawDomain} → Cleaned: {dfsTestResult.targetDomain}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              borderTop: "1px solid #e2e8f0",
+              marginTop: 12,
+              paddingTop: 12,
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <Btn
+                onClick={runCron}
+                variant={cronRunning ? "secondary" : "primary"}
+              >
+                {cronRunning ? "⏳ Running..." : "▶ Run Data Collection Now"}
+              </Btn>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                Manually trigger the weekly cron job
+              </span>
+            </div>
           </div>
           {cronResult && (
             <div
@@ -2660,6 +2750,47 @@ function ConfigPage() {
             ✅ Saved successfully!
           </span>
         )}
+      </div>
+
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 24,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          marginTop: 16,
+          borderLeft: "4px solid #dc2626",
+        }}
+      >
+        <Section title="⚠️ Danger Zone">
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <Btn onClick={clearSnapshots} variant="danger" size="sm">
+              {clearing ? "⏳ Clearing..." : "🗑 Clear All Ranking Data"}
+            </Btn>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>
+              Delete all snapshots and alerts, then re-run backfill
+            </span>
+          </div>
+          {clearResult && (
+            <div
+              style={{
+                padding: 10,
+                borderRadius: 8,
+                background: clearResult.ok ? "#ecfdf5" : "#fef2f2",
+                fontSize: 12,
+                marginTop: 8,
+              }}
+            >
+              {clearResult.ok ? (
+                <div style={{ color: "#059669" }}>
+                  ✅ Cleared {clearResult.snapshotsDeleted} snapshots and {clearResult.alertsDeleted} alerts. Ready for fresh backfill!
+                </div>
+              ) : (
+                <div style={{ color: "#dc2626" }}>❌ Error: {clearResult.error}</div>
+              )}
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   );
