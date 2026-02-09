@@ -2069,7 +2069,7 @@ function ConfigPage() {
     setSaving(true);
     setSaved(false);
     try {
-      await api("/config", { method: "PUT", body: JSON.stringify(cfg) });
+      await api("/config", { method: "POST", body: JSON.stringify(cfg) });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000); // Hide after 3 seconds
     } catch (e) {

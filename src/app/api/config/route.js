@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // GET /api/config — get all config
 export async function GET() {
   const configs = await prisma.config.findMany();
@@ -11,8 +15,8 @@ export async function GET() {
   return NextResponse.json(result);
 }
 
-// PUT /api/config — save config (bulk upsert)
-export async function PUT(request) {
+// POST /api/config — save config (using POST instead of PUT for compatibility)
+export async function POST(request) {
   try {
     const body = await request.json();
 
