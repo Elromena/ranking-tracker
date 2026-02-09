@@ -100,7 +100,7 @@ model Note {
 }
 
 model Config {
-  id    Int    @id @default(1)
+  id    Int    @id @default(autoincrement())  // Change this
   key   String @unique
   value String
 
