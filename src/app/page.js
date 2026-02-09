@@ -2052,6 +2052,7 @@ function ConfigPage() {
   const [backfillResult, setBackfillResult] = useState(null);
   const [listingSites, setListingSites] = useState(false);
   const [sitesResult, setSitesResult] = useState(null);
+  const [useHistoricalSerp, setUseHistoricalSerp] = useState(true);
 
   useEffect(() => {
     api("/config").then((d) => {
@@ -2113,7 +2114,10 @@ function ConfigPage() {
     try {
       const result = await api("/admin/backfill", {
         method: "POST",
-        body: JSON.stringify({ weeksBack: weeks }),
+        body: JSON.stringify({ 
+          weeksBack: weeks,
+          useHistoricalSerp: useHistoricalSerp
+        }),
       });
       setBackfillResult(result);
     } catch (e) {
@@ -2546,6 +2550,23 @@ function ConfigPage() {
               paddingTop: 20,
             }}
           >
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={useHistoricalSerp}
+                  onChange={(e) => setUseHistoricalSerp(e.target.checked)}
+                  style={{ cursor: "pointer" }}
+                />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>
+                  Use DataForSEO Historical SERP (Real rankings from past weeks)
+                </span>
+              </label>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 28, marginTop: 4 }}>
+                ✅ Checked: Real SERP positions from past (costs DataForSEO credits)<br/>
+                ❌ Unchecked: GSC average position (free but less accurate)
+              </div>
+            </div>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <Btn
                 onClick={() => runBackfill(4)}
@@ -2554,7 +2575,7 @@ function ConfigPage() {
                 {backfilling ? "⏳ Backfilling..." : "⏮ Backfill Historical Data"}
               </Btn>
               <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                Pull last 4 weeks of GSC data for all articles
+                Pull last 4 weeks of {useHistoricalSerp ? 'real SERP positions' : 'GSC averages'}
               </span>
             </div>
             {backfillResult && (

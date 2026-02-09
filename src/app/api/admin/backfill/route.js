@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { getSearchAnalytics, formatDate } from "@/lib/gsc";
-import { batchSerpPositions } from "@/lib/dataforseo";
+import { batchSerpPositions, getHistoricalSerpPositions } from "@/lib/dataforseo";
 
 /**
  * POST /api/admin/backfill
  * Backfill historical data for the last N weeks
  * 
- * Body: { weeksBack: 4, urlId: null (optional - for specific URL only) }
+ * Body: { 
+ *   weeksBack: 4, 
+ *   urlId: null (optional - for specific URL only),
+ *   useHistoricalSerp: true (use DataForSEO historical API - costs more but accurate)
+ * }
  */
 export async function POST(request) {
   const startTime = Date.now();
@@ -17,8 +21,10 @@ export async function POST(request) {
     const body = await request.json();
     const weeksBack = parseInt(body.weeksBack || "4");
     const urlId = body.urlId || null;
+    const useHistoricalSerp = body.useHistoricalSerp !== false; // Default to true
 
     log.push(`Starting backfill for last ${weeksBack} weeks`);
+    log.push(`Using ${useHistoricalSerp ? 'DataForSEO historical SERP' : 'GSC average position'} for past weeks`);
 
     // 1. Load config
     const configs = await prisma.config.findMany();
@@ -103,22 +109,39 @@ export async function POST(request) {
           log.push(`  ${url.title}: GSC error - ${e.message}`);
         }
 
-        // 4b. Pull DataForSEO positions (only for current week)
+        // 4b. Pull DataForSEO positions
         let dfsData = {};
-        if (weekOffset === 0) {
+        if (weekOffset === 0 || useHistoricalSerp) {
           try {
-            dfsData = await batchSerpPositions({
-              keywords: kwStrings,
-              targetDomain,
-              country,
-              language,
-            });
-            log.push(`  ${url.title}: DFS returned ${Object.keys(dfsData).length} positions`);
+            if (weekOffset === 0) {
+              // Current week: Use live SERP
+              dfsData = await batchSerpPositions({
+                keywords: kwStrings,
+                targetDomain,
+                country,
+                language,
+              });
+              log.push(`  ${url.title}: DFS live returned ${Object.keys(dfsData).length} positions`);
+            } else {
+              // Historical week: Use historical SERP API
+              // Use the middle of the week for the snapshot
+              const snapshotDate = new Date(weekStarting);
+              snapshotDate.setDate(snapshotDate.getDate() + 3); // Wednesday of that week
+              
+              dfsData = await getHistoricalSerpPositions({
+                keywords: kwStrings,
+                targetDomain,
+                date: formatDate(snapshotDate),
+                country,
+                language,
+              });
+              log.push(`  ${url.title}: DFS historical (${formatDate(snapshotDate)}) returned ${Object.keys(dfsData).length} positions`);
+            }
           } catch (e) {
             log.push(`  ${url.title}: DFS error - ${e.message}`);
           }
         } else {
-          log.push(`  ${url.title}: Skipping DFS (historical week)`);
+          log.push(`  ${url.title}: Skipping DFS for historical week (using GSC position only)`);
         }
 
         // 4c. Get previous week's snapshot for comparison

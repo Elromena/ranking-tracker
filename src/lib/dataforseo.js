@@ -144,3 +144,74 @@ export async function batchSerpPositions({ keywords, targetDomain, country = 'us
 
   return results;
 }
+
+/**
+ * Get historical SERP positions for keywords on a specific date
+ * Uses DataForSEO Labs Historical SERP API
+ * Date format: YYYY-MM-DD
+ */
+export async function getHistoricalSerpPositions({ keywords, targetDomain, date, country = 'us', language = 'en' }) {
+  const results = {};
+
+  // Map country codes to location codes
+  const locationMap = { us: 2840, gb: 2826, ng: 2566, de: 2276, ca: 2124, au: 2036 };
+  const locationCode = locationMap[country] || 2840;
+
+  // Process in batches of 10 (historical API is more expensive)
+  const batches = [];
+  for (let i = 0; i < keywords.length; i += 10) {
+    batches.push(keywords.slice(i, i + 10));
+  }
+
+  for (const batch of batches) {
+    const tasks = batch.map(kw => ({
+      keyword: kw,
+      location_code: locationCode,
+      language_code: language,
+      date_from: date,
+      date_to: date, // Same date = specific day snapshot
+    }));
+
+    try {
+      const data = await dfsRequest('/dataforseo_labs/google/historical_serps/live', tasks);
+
+      for (const task of data.tasks || []) {
+        const kw = task.data?.keyword;
+        const result = task.result?.[0];
+        if (!kw || !result) continue;
+
+        const items = result.items || [];
+        let position = null;
+        let foundUrl = null;
+
+        for (const item of items) {
+          if (item.type === 'organic' && item.domain?.includes(targetDomain)) {
+            position = item.rank_absolute;
+            foundUrl = item.url;
+            break;
+          }
+        }
+
+        const serpFeatures = [];
+        for (const item of items) {
+          if (['featured_snippet', 'people_also_ask', 'local_pack', 'knowledge_graph', 'video'].includes(item.type)) {
+            serpFeatures.push(item.type === 'people_also_ask' ? 'paa' : item.type);
+          }
+        }
+
+        results[kw] = { position, serpFeatures: [...new Set(serpFeatures)], foundUrl };
+      }
+    } catch (error) {
+      console.error(`DataForSEO historical error for date ${date}:`, error.message);
+      // If historical API fails, return empty results for this batch
+      for (const kw of batch) {
+        results[kw] = { position: null, serpFeatures: [], foundUrl: null };
+      }
+    }
+
+    // Rate limiting — pause between batches
+    if (batches.length > 1) await new Promise(r => setTimeout(r, 3000));
+  }
+
+  return results;
+}
