@@ -861,6 +861,8 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
   const [tab, setTab] = useState("overview");
   const [noteText, setNoteText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -918,11 +920,79 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
     setData(updated);
   };
 
+  const refreshRankings = async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const result = await api("/admin/trigger-url", {
+        method: "POST",
+        body: JSON.stringify({ urlId: parseInt(urlId) }),
+      });
+      setRefreshResult(result);
+      if (result.ok) {
+        // Reload the data to show updated rankings
+        const updated = await api(`/urls/${urlId}`);
+        setData(updated);
+        if (onRefresh) onRefresh();
+      }
+    } catch (e) {
+      setRefreshResult({ ok: false, error: e.message });
+    }
+    setRefreshing(false);
+  };
+
   return (
     <div>
-      <Btn variant="ghost" onClick={onBack} style={{ marginBottom: 12 }}>
-        ← Back to all URLs
-      </Btn>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <Btn variant="ghost" onClick={onBack}>
+          ← Back to all URLs
+        </Btn>
+        <Btn
+          variant={refreshing ? "secondary" : "primary"}
+          size="sm"
+          onClick={refreshRankings}
+        >
+          {refreshing ? "⏳ Refreshing..." : "🔄 Refresh Rankings"}
+        </Btn>
+      </div>
+      {refreshResult && (
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 8,
+            background: refreshResult.ok ? "#ecfdf5" : "#fef2f2",
+            fontSize: 12,
+            marginBottom: 14,
+          }}
+        >
+          {refreshResult.ok ? (
+            <>
+              <div style={{ fontWeight: 700, color: "#059669" }}>
+                ✅ Rankings updated in {refreshResult.duration}
+              </div>
+              <div style={{ color: "#065f46", marginTop: 4 }}>
+                Processed {refreshResult.stats?.keywordsProcessed || 0} keywords •{" "}
+                GSC: {refreshResult.stats?.gscResults || 0} • DFS:{" "}
+                {refreshResult.stats?.dfsResults || 0}
+              </div>
+              {refreshResult.alerts && 
+                (refreshResult.alerts.critical > 0 ||
+                  refreshResult.alerts.warning > 0 ||
+                  refreshResult.alerts.positive > 0) && (
+                <div style={{ color: "#065f46", marginTop: 4 }}>
+                  Alerts: {refreshResult.alerts.critical} critical,{" "}
+                  {refreshResult.alerts.warning} warnings,{" "}
+                  {refreshResult.alerts.positive} positive
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: "#dc2626", fontWeight: 600 }}>
+              ❌ Error: {refreshResult.error}
+            </div>
+          )}
+        </div>
+      )}
       <div
         style={{
           background: "#fff",
@@ -1954,6 +2024,8 @@ function ConfigPage() {
   const [cronResult, setCronResult] = useState(null);
   const [gscTesting, setGscTesting] = useState(false);
   const [gscTestResult, setGscTestResult] = useState(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
 
   useEffect(() => {
     api("/config").then((d) => {
@@ -1997,6 +2069,21 @@ function ConfigPage() {
       setGscTestResult({ success: false, errors: [e.message] });
     }
     setGscTesting(false);
+  };
+
+  const runBackfill = async (weeks = 4) => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const result = await api("/admin/backfill", {
+        method: "POST",
+        body: JSON.stringify({ weeksBack: weeks }),
+      });
+      setBackfillResult(result);
+    } catch (e) {
+      setBackfillResult({ ok: false, error: e.message });
+    }
+    setBackfilling(false);
   };
 
   if (loading) return <Loading />;
@@ -2305,6 +2392,69 @@ function ConfigPage() {
               )}
             </div>
           )}
+
+          <div
+            style={{
+              borderTop: "1px solid #e2e8f0",
+              marginTop: 20,
+              paddingTop: 20,
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <Btn
+                onClick={() => runBackfill(4)}
+                variant={backfilling ? "secondary" : "secondary"}
+              >
+                {backfilling ? "⏳ Backfilling..." : "⏮ Backfill Historical Data"}
+              </Btn>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                Pull last 4 weeks of GSC data for all articles
+              </span>
+            </div>
+            {backfillResult && (
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 8,
+                  background: backfillResult.ok ? "#ecfdf5" : "#fef2f2",
+                  fontSize: 12,
+                  marginTop: 12,
+                }}
+              >
+                {backfillResult.ok ? (
+                  <>
+                    <div style={{ fontWeight: 700, color: "#059669" }}>
+                      ✅ Backfill completed in {backfillResult.duration}
+                    </div>
+                    <div style={{ color: "#065f46", marginTop: 4 }}>
+                      Created {backfillResult.snapshotsCreated} snapshots, skipped{" "}
+                      {backfillResult.snapshotsSkipped} existing
+                    </div>
+                    <div style={{ color: "#065f46", marginTop: 2 }}>
+                      Processed {backfillResult.weeksProcessed} weeks
+                    </div>
+                    {backfillResult.log && (
+                      <pre
+                        style={{
+                          marginTop: 8,
+                          fontSize: 10,
+                          color: "#64748b",
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "'JetBrains Mono',monospace",
+                        }}
+                      >
+                        {backfillResult.log.join("\n")}
+                      </pre>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ color: "#dc2626", fontWeight: 600 }}>
+                    ❌ Error: {backfillResult.error}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </Section>
       </div>
 
