@@ -424,11 +424,18 @@ function Loading() {
 function ArticleModal({ open, onClose, onSave, article }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
-  const [category, setCat] = useState("Advertising");
+  const [category, setCat] = useState("");
   const [priority, setPri] = useState("medium");
   const [keywords, setKws] = useState([]);
   const [newKw, setNewKw] = useState("");
   const [newIntent, setNewIntent] = useState("commercial");
+  const [categories, setCategories] = useState([]);
+
+  const fetchCategories = async () => {
+    api("/admin/categories").then((d) => {
+      setCategories(d);
+    });
+  };
 
   useEffect(() => {
     if (article) {
@@ -440,10 +447,13 @@ function ArticleModal({ open, onClose, onSave, article }) {
     } else {
       setUrl("");
       setTitle("");
-      setCat("Advertising");
+      setCat("");
       setPri("medium");
       setKws([]);
       setNewKw("");
+    }
+    if (open) {
+      fetchCategories();
     }
   }, [article, open]);
 
@@ -460,6 +470,7 @@ function ArticleModal({ open, onClose, onSave, article }) {
     ]);
     setNewKw("");
   };
+  const options = categories?.map((item) => ({ v: item.name, l: item.name }));
 
   return (
     <Modal
@@ -487,12 +498,7 @@ function ArticleModal({ open, onClose, onSave, article }) {
             label="Category"
             value={category}
             onChange={setCat}
-            options={[
-              { v: "Advertising", l: "Advertising" },
-              { v: "Gaming", l: "Gaming" },
-              { v: "Fintech", l: "Fintech" },
-              { v: "Mobile Apps", l: "Mobile Apps" },
-            ]}
+            options={options}
           />
           <Select
             label="Priority"
@@ -1672,7 +1678,7 @@ function WeeklyReportView({ onSelectUrl }) {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody key={`tbody`}>
               {rows.map((r, i) => {
                 const isExp = expanded === r.urlId;
                 return (
@@ -2240,22 +2246,26 @@ function ConfigPage() {
           title="🔗 Data Sources"
           desc="DataForSEO for rankings (required) • GSC for traffic data (optional)"
         >
-          <Input
-            label="Target Domain"
-            value={cfg.targetDomain || ""}
-            onChange={(v) => u("targetDomain", v)}
-            placeholder="blockchain-ads.com"
-          />
+          <div>
+            <Input
+              label="Target Domain"
+              value={cfg.targetDomain || ""}
+              onChange={(v) => u("targetDomain", v)}
+              placeholder="blockchain-ads.com"
+            />
+          </div>
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: -8 }}>
             Your domain name without www or https — used to find your articles
             in SERP results
           </div>
-          <Input
-            label="GSC Property URL (Optional - For Traffic Data)"
-            value={cfg.gscProperty || ""}
-            onChange={(v) => u("gscProperty", v)}
-            placeholder="Leave empty if not using GSC"
-          />
+          <div>
+            <Input
+              label="GSC Property URL (Optional - For Traffic Data)"
+              value={cfg.gscProperty || ""}
+              onChange={(v) => u("gscProperty", v)}
+              placeholder="Leave empty if not using GSC"
+            />
+          </div>
 
           <div
             style={{
@@ -3053,7 +3063,7 @@ export default function Page() {
   const nav = [
     { id: "dashboard", l: "Dashboard", i: "◉" },
     { id: "weekly", l: "Weekly Report", i: "◫" },
-    { id: "categories", l: "All Categoies", i: "◫" },
+    { id: "categories", l: "All Categoies", i: "ø" },
     {
       id: "alerts",
       l: "Alerts",
