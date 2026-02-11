@@ -3,6 +3,28 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 
+const Loader = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 50 50"
+    xmlns="http://www.w3.org/2000/svg"
+    className="animate-spin"
+  >
+    <circle
+      cx="25"
+      cy="25"
+      r="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="5"
+      strokeLinecap="round"
+      strokeDasharray="90 150"
+      strokeDashoffset="0"
+    />
+  </svg>
+);
+
 // Dynamic import recharts to avoid SSR issues
 const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), {
   ssr: false,
@@ -40,29 +62,37 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  
+
   // Check if response is ok
   if (!res.ok) {
     // Try to get error message from JSON response
     try {
       const errorData = await res.json();
-      throw new Error(errorData.error || errorData.message || `HTTP ${res.status}: ${res.statusText}`);
+      throw new Error(
+        errorData.error ||
+          errorData.message ||
+          `HTTP ${res.status}: ${res.statusText}`,
+      );
     } catch (e) {
       // If parsing JSON fails, throw generic error
-      if (e.message.includes('Unexpected token')) {
-        throw new Error(`Server error (${res.status}): The server returned an HTML error page instead of JSON. Check Railway logs for details.`);
+      if (e.message.includes("Unexpected token")) {
+        throw new Error(
+          `Server error (${res.status}): The server returned an HTML error page instead of JSON. Check Railway logs for details.`,
+        );
       }
       throw e;
     }
   }
-  
+
   // Check content type
-  const contentType = res.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
     const text = await res.text();
-    throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
+    throw new Error(
+      `Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`,
+    );
   }
-  
+
   return res.json();
 }
 
@@ -994,20 +1024,20 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
                 ✅ Rankings updated in {refreshResult.duration}
               </div>
               <div style={{ color: "#065f46", marginTop: 4 }}>
-                Processed {refreshResult.stats?.keywordsProcessed || 0} keywords •{" "}
-                GSC: {refreshResult.stats?.gscResults || 0} • DFS:{" "}
+                Processed {refreshResult.stats?.keywordsProcessed || 0} keywords
+                • GSC: {refreshResult.stats?.gscResults || 0} • DFS:{" "}
                 {refreshResult.stats?.dfsResults || 0}
               </div>
-              {refreshResult.alerts && 
+              {refreshResult.alerts &&
                 (refreshResult.alerts.critical > 0 ||
                   refreshResult.alerts.warning > 0 ||
                   refreshResult.alerts.positive > 0) && (
-                <div style={{ color: "#065f46", marginTop: 4 }}>
-                  Alerts: {refreshResult.alerts.critical} critical,{" "}
-                  {refreshResult.alerts.warning} warnings,{" "}
-                  {refreshResult.alerts.positive} positive
-                </div>
-              )}
+                  <div style={{ color: "#065f46", marginTop: 4 }}>
+                    Alerts: {refreshResult.alerts.critical} critical,{" "}
+                    {refreshResult.alerts.warning} warnings,{" "}
+                    {refreshResult.alerts.positive} positive
+                  </div>
+                )}
             </>
           ) : (
             <div style={{ color: "#dc2626", fontWeight: 600 }}>
@@ -2118,9 +2148,9 @@ function ConfigPage() {
     try {
       const result = await api("/admin/backfill", {
         method: "POST",
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           weeksBack: weeks,
-          useHistoricalSerp: useHistoricalSerp
+          useHistoricalSerp: useHistoricalSerp,
         }),
       });
       setBackfillResult(result);
@@ -2147,7 +2177,12 @@ function ConfigPage() {
   };
 
   const clearSnapshots = async () => {
-    if (!confirm("This will delete ALL ranking snapshots and alerts. Are you sure?")) return;
+    if (
+      !confirm(
+        "This will delete ALL ranking snapshots and alerts. Are you sure?",
+      )
+    )
+      return;
     setClearing(true);
     setClearResult(null);
     try {
@@ -2212,7 +2247,8 @@ function ConfigPage() {
             placeholder="blockchain-ads.com"
           />
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: -8 }}>
-            Your domain name without www or https — used to find your articles in SERP results
+            Your domain name without www or https — used to find your articles
+            in SERP results
           </div>
           <Input
             label="GSC Property URL (Optional - For Traffic Data)"
@@ -2220,8 +2256,15 @@ function ConfigPage() {
             onChange={(v) => u("gscProperty", v)}
             placeholder="Leave empty if not using GSC"
           />
-          
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <Btn
               onClick={listGSCSites}
               variant={listingSites ? "secondary" : "secondary"}
@@ -2252,20 +2295,45 @@ function ConfigPage() {
             >
               {sitesResult.success ? (
                 <>
-                  <div style={{ fontWeight: 700, color: "#059669", marginBottom: 8 }}>
-                    ✅ Found {sitesResult.count} GSC {sitesResult.count === 1 ? 'property' : 'properties'}
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "#059669",
+                      marginBottom: 8,
+                    }}
+                  >
+                    ✅ Found {sitesResult.count} GSC{" "}
+                    {sitesResult.count === 1 ? "property" : "properties"}
                   </div>
                   {sitesResult.serviceAccountEmail && (
-                    <div style={{ color: "#065f46", marginBottom: 8, fontSize: 11 }}>
+                    <div
+                      style={{
+                        color: "#065f46",
+                        marginBottom: 8,
+                        fontSize: 11,
+                      }}
+                    >
                       Service Account: {sitesResult.serviceAccountEmail}
                     </div>
                   )}
                   {sitesResult.sites && sitesResult.sites.length > 0 ? (
                     <>
-                      <div style={{ color: "#065f46", marginBottom: 6, fontWeight: 600 }}>
+                      <div
+                        style={{
+                          color: "#065f46",
+                          marginBottom: 6,
+                          fontWeight: 600,
+                        }}
+                      >
                         Available properties:
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
                         {sitesResult.sites.map((site, i) => (
                           <div
                             key={i}
@@ -2280,10 +2348,23 @@ function ConfigPage() {
                             }}
                           >
                             <div>
-                              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#059669", fontWeight: 600 }}>
+                              <div
+                                style={{
+                                  fontFamily: "'JetBrains Mono',monospace",
+                                  fontSize: 11,
+                                  color: "#059669",
+                                  fontWeight: 600,
+                                }}
+                              >
                                 {site.siteUrl}
                               </div>
-                              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: "#94a3b8",
+                                  marginTop: 2,
+                                }}
+                              >
                                 Permission: {site.permissionLevel}
                               </div>
                             </div>
@@ -2308,21 +2389,38 @@ function ConfigPage() {
                 </>
               ) : (
                 <>
-                  <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "#dc2626",
+                      marginBottom: 6,
+                    }}
+                  >
                     ❌ {sitesResult.error || "Failed to list sites"}
                   </div>
                   {sitesResult.hint && (
-                    <div style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
+                    <div
+                      style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
+                    >
                       💡 {sitesResult.hint}
                     </div>
                   )}
                   {sitesResult.details && (
-                    <div style={{ color: "#991b1b", marginTop: 6, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>
+                    <div
+                      style={{
+                        color: "#991b1b",
+                        marginTop: 6,
+                        fontSize: 10,
+                        fontFamily: "'JetBrains Mono',monospace",
+                      }}
+                    >
                       {sitesResult.details}
                     </div>
                   )}
                   {sitesResult.serviceAccountEmail && (
-                    <div style={{ color: "#991b1b", marginTop: 6, fontSize: 11 }}>
+                    <div
+                      style={{ color: "#991b1b", marginTop: 6, fontSize: 11 }}
+                    >
                       Add this email to GSC: {sitesResult.serviceAccountEmail}
                     </div>
                   )}
@@ -2346,7 +2444,9 @@ function ConfigPage() {
                     ✅ GSC Connection Working!
                   </div>
                   {gscTestResult.info?.serviceAccountEmail && (
-                    <div style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}>
+                    <div
+                      style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}
+                    >
                       Service Account: {gscTestResult.info.serviceAccountEmail}
                     </div>
                   )}
@@ -2355,29 +2455,37 @@ function ConfigPage() {
                       Retrieved {gscTestResult.info.rowCount} keywords from GSC
                     </div>
                   )}
-                  {gscTestResult.info?.sampleKeywords && gscTestResult.info.sampleKeywords.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: "#064e3b" }}>
-                      <strong>Sample keywords:</strong>
-                      <ul style={{ marginTop: 4, paddingLeft: 18 }}>
-                        {gscTestResult.info.sampleKeywords.map((kw, i) => (
-                          <li key={i}>
-                            {kw.keyword} - Pos: {kw.position}, Clicks: {kw.clicks}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {gscTestResult.info?.sampleKeywords &&
+                    gscTestResult.info.sampleKeywords.length > 0 && (
+                      <div
+                        style={{ marginTop: 8, fontSize: 11, color: "#064e3b" }}
+                      >
+                        <strong>Sample keywords:</strong>
+                        <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+                          {gscTestResult.info.sampleKeywords.map((kw, i) => (
+                            <li key={i}>
+                              {kw.keyword} - Pos: {kw.position}, Clicks:{" "}
+                              {kw.clicks}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                 </>
               ) : (
                 <>
                   <div style={{ fontWeight: 700, color: "#dc2626" }}>
                     ❌ GSC Connection Failed
                   </div>
-                  {gscTestResult.errors && gscTestResult.errors.map((err, i) => (
-                    <div key={i} style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
-                      • {err}
-                    </div>
-                  ))}
+                  {gscTestResult.errors &&
+                    gscTestResult.errors.map((err, i) => (
+                      <div
+                        key={i}
+                        style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
+                      >
+                        • {err}
+                      </div>
+                    ))}
                 </>
               )}
             </div>
@@ -2419,10 +2527,15 @@ function ConfigPage() {
             }}
           >
             💡 <strong>API keys are set via environment variables</strong> on
-            Railway, not here. This keeps them secure.<br/><br/>
-            <strong>Required:</strong> <code>DATAFORSEO_LOGIN</code>, <code>DATAFORSEO_PASSWORD</code><br/>
-            <strong>Optional:</strong> <code>GSC_CREDENTIALS</code> (only for traffic data),{" "}
-            <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code> (for alerts)
+            Railway, not here. This keeps them secure.
+            <br />
+            <br />
+            <strong>Required:</strong> <code>DATAFORSEO_LOGIN</code>,{" "}
+            <code>DATAFORSEO_PASSWORD</code>
+            <br />
+            <strong>Optional:</strong> <code>GSC_CREDENTIALS</code> (only for
+            traffic data), <code>TELEGRAM_BOT_TOKEN</code>,{" "}
+            <code>TELEGRAM_CHAT_ID</code> (for alerts)
           </div>
         </Section>
       </div>
@@ -2485,7 +2598,8 @@ function ConfigPage() {
               marginBottom: 10,
             }}
           >
-            ⚠️ This feature requires GSC configuration. Manually add keywords if GSC not set up.
+            ⚠️ This feature requires GSC configuration. Manually add keywords if
+            GSC not set up.
           </div>
           <Toggle
             label="Auto-add GSC keywords"
@@ -2545,7 +2659,14 @@ function ConfigPage() {
         }}
       >
         <Section title="🛠 Manual Actions">
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <Btn
               onClick={testDFS}
               variant={dfsTesting ? "secondary" : "secondary"}
@@ -2589,9 +2710,14 @@ function ConfigPage() {
                       : `❌ Error: ${dfsTestResult.error}`}
                   </div>
                   {dfsTestResult.ok && (
-                    <div style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}>
-                      Check that Target Domain in Data Sources matches your actual domain.
-                      <br/>Raw config: {dfsTestResult.rawDomain} → Cleaned: {dfsTestResult.targetDomain}
+                    <div
+                      style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
+                    >
+                      Check that Target Domain in Data Sources matches your
+                      actual domain.
+                      <br />
+                      Raw config: {dfsTestResult.rawDomain} → Cleaned:{" "}
+                      {dfsTestResult.targetDomain}
                     </div>
                   )}
                 </>
@@ -2667,20 +2793,38 @@ function ConfigPage() {
             }}
           >
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  cursor: "pointer",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={useHistoricalSerp}
                   onChange={(e) => setUseHistoricalSerp(e.target.checked)}
                   style={{ cursor: "pointer" }}
                 />
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>
+                <span
+                  style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}
+                >
                   Use DataForSEO Historical SERP (Real rankings from past weeks)
                 </span>
               </label>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 28, marginTop: 4 }}>
-                ✅ Checked: Real SERP positions from past (costs DataForSEO credits)<br/>
-                ❌ Unchecked: GSC average position (free but less accurate)
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#94a3b8",
+                  marginLeft: 28,
+                  marginTop: 4,
+                }}
+              >
+                ✅ Checked: Real SERP positions from past (costs DataForSEO
+                credits)
+                <br />❌ Unchecked: GSC average position (free but less
+                accurate)
               </div>
             </div>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -2688,10 +2832,13 @@ function ConfigPage() {
                 onClick={() => runBackfill(4)}
                 variant={backfilling ? "secondary" : "secondary"}
               >
-                {backfilling ? "⏳ Backfilling..." : "⏮ Backfill Historical Data"}
+                {backfilling
+                  ? "⏳ Backfilling..."
+                  : "⏮ Backfill Historical Data"}
               </Btn>
               <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                Pull last 4 weeks of {useHistoricalSerp ? 'real SERP positions' : 'GSC averages'}
+                Pull last 4 weeks of{" "}
+                {useHistoricalSerp ? "real SERP positions" : "GSC averages"}
               </span>
             </div>
             {backfillResult && (
@@ -2710,8 +2857,8 @@ function ConfigPage() {
                       ✅ Backfill completed in {backfillResult.duration}
                     </div>
                     <div style={{ color: "#065f46", marginTop: 4 }}>
-                      Created {backfillResult.snapshotsCreated} snapshots, skipped{" "}
-                      {backfillResult.snapshotsSkipped} existing
+                      Created {backfillResult.snapshotsCreated} snapshots,
+                      skipped {backfillResult.snapshotsSkipped} existing
                     </div>
                     <div style={{ color: "#065f46", marginTop: 2 }}>
                       Processed {backfillResult.weeksProcessed} weeks
@@ -2783,10 +2930,13 @@ function ConfigPage() {
             >
               {clearResult.ok ? (
                 <div style={{ color: "#059669" }}>
-                  ✅ Cleared {clearResult.snapshotsDeleted} snapshots and {clearResult.alertsDeleted} alerts. Ready for fresh backfill!
+                  ✅ Cleared {clearResult.snapshotsDeleted} snapshots and{" "}
+                  {clearResult.alertsDeleted} alerts. Ready for fresh backfill!
                 </div>
               ) : (
-                <div style={{ color: "#dc2626" }}>❌ Error: {clearResult.error}</div>
+                <div style={{ color: "#dc2626" }}>
+                  ❌ Error: {clearResult.error}
+                </div>
               )}
             </div>
           )}
@@ -2795,6 +2945,88 @@ function ConfigPage() {
     </div>
   );
 }
+
+const CategoriesAdmin = () => {
+  const [categories, setCategories] = useState([]);
+  const [name, setName] = useState("");
+  const [selected, setSelected] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [delLoading, setDelLoading] = useState(false);
+
+  const fetchCategories = async () => {
+    api("/admin/categories").then((d) => {
+      setCategories(d);
+      setLoading(false);
+    });
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const addCategory = async () => {
+    if (!name.trim()) return;
+
+    setLoading(true);
+    await fetch("/api/admin/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+
+    setName("");
+    setLoading(false);
+    fetchCategories();
+  };
+
+  const deleteCategory = async (id) => {
+    setSelected(id);
+    setDelLoading(true);
+    await fetch(`/api/admin/categories/${id}`, {
+      method: "DELETE",
+    });
+    setDelLoading(false);
+
+    fetchCategories();
+  };
+
+  return (
+    <div className="max-w-md space-y-4">
+      <div className="flex gap-2">
+        <input
+          className="border px-3 py-2 flex-1"
+          placeholder="New category"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button
+          onClick={addCategory}
+          disabled={loading}
+          className={`${loading ? "disbled:bg-black/40" : "bg-black"}  text-white px-4`}
+        >
+          {loading ? "Please wait" : "Add"}
+        </button>
+      </div>
+
+      <ul className="space-y-2">
+        {categories.map((cat) => (
+          <li
+            key={cat.id}
+            className="flex justify-between items-center rounded-lg shadow-sm border px-3 py-2"
+          >
+            <span>{cat.name}</span>
+            <button
+              onClick={() => deleteCategory(cat.id)}
+              className="text-red-500"
+            >
+              {delLoading && selected === cat.id ? <Loader /> : "Delete"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
 // ── Main App ───────────────────────────────────────────────
 export default function Page() {
@@ -2821,6 +3053,7 @@ export default function Page() {
   const nav = [
     { id: "dashboard", l: "Dashboard", i: "◉" },
     { id: "weekly", l: "Weekly Report", i: "◫" },
+    { id: "categories", l: "All Categoies", i: "◫" },
     {
       id: "alerts",
       l: "Alerts",
@@ -2865,12 +3098,14 @@ export default function Page() {
     weekly: "Weekly Report",
     alerts: "Alerts Inbox",
     config: "Settings",
+    categories: "Categories",
   };
   const subs = {
     dashboard: "Monday morning overview — scan for red, action what matters",
     weekly: "Aggregated article performance — click to expand keywords",
     alerts: "Unresolved alerts across all articles",
     config: "Environment variables, thresholds, and notifications",
+    categories: "Manage categories",
   };
 
   return (
@@ -3022,6 +3257,7 @@ export default function Page() {
         {view === "weekly" && <WeeklyReportView onSelectUrl={goUrl} />}
         {view === "alerts" && <AlertsView onSelectUrl={goUrl} />}
         {view === "config" && <ConfigPage />}
+        {view === "categories" && <CategoriesAdmin />}
       </div>
 
       <ArticleModal

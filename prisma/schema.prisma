@@ -107,3 +107,10 @@ model Config {
 
   @@map("config")
 }
+
+
+model Category {
+  id    Int    @id @default(autoincrement())  // Change this
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
