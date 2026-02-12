@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../lib/services";
+import AlertsView from "./views/alert";
+import { CategoriesAdmin } from "./views/categories";
 import DashboardView from "./views/dashboard";
+import ArticleModal from "./views/dashboard/article-modal";
 import URLDetailView from "./views/detail";
 import WeeklyReportView from "./views/report";
-import AlertsView from "./views/alert";
 import ConfigPage from "./views/settings";
-import { CategoriesAdmin } from "./views/categories";
-import { api } from "../lib/services";
-import ArticleModal from "./views/dashboard/article-modal";
 
 export const Loader = () => (
   <svg

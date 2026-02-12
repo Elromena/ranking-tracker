@@ -1,20 +1,10 @@
 import Badge from "@/app/component/badge";
 import Btn from "@/app/component/btn";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import Loading from "@/app/component/loading";
 import Pill from "@/app/component/pill";
 import { api } from "@/lib/services";
 import { sevCfg, statusCfg, stCfg } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import AnalyticsRevenueToExpense from "../AnalyticsRevenueToExpenses";
 import RankingChart from "./keywords-graph";
 
 export default function URLDetailView({
@@ -30,7 +20,7 @@ export default function URLDetailView({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState(null);
-  const [viewMode, setViewMode] = useState("monthly");
+  const [viewMode, setViewMode] = useState("daily");
   const [graphData, setGraphData] = useState();
 
   function buildChartData(keywords, mode = "monthly") {
