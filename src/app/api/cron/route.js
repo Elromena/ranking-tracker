@@ -42,14 +42,15 @@ export async function POST(request) {
     const maxKwPerUrl = parseInt(cfg.maxKwPerUrl || "10");
 
     // Extract clean domain for DataForSEO matching
-    const rawDomain = cfg.targetDomain || cfg.gscProperty || process.env.GSC_PROPERTY || "";
+    const rawDomain =
+      cfg.targetDomain || cfg.gscProperty || process.env.GSC_PROPERTY || "";
     const targetDomain = rawDomain
       .replace("sc-domain:", "")
       .replace("https://", "")
       .replace("http://", "")
       .replace("www.", "")
       .replace(/\/$/, "");
-    
+
     log.push(`Target domain: ${targetDomain}`);
 
     // 2. Get all tracked URLs with their keywords
@@ -71,9 +72,16 @@ export async function POST(request) {
       `Found ${urls.length} URLs with ${urls.reduce((s, u) => s + u.keywords.length, 0)} active keywords`,
     );
 
+    // const weekStarting = new Date();
+    // weekStarting.setHours(0, 0, 0, 0);
+
     const weekStarting = new Date();
-    weekStarting.setDate(weekStarting.getDate() - weekStarting.getDay() + 1); // Monday
     weekStarting.setHours(0, 0, 0, 0);
+
+    // // 👇 manually change this number to simulate different days
+    // const DAY_OFFSET = -2; // 0 = today, -1 = yesterday, -2 = 2 days ago
+
+    // weekStarting.setDate(weekStarting.getDate() + DAY_OFFSET);
 
     // Get date range for GSC (if available)
     let startDate, endDate;
@@ -89,6 +97,9 @@ export async function POST(request) {
 
       // 3a. Pull DataForSEO positions (PRIMARY SOURCE)
       let dfsData = {};
+
+      console.log(kwStrings, "strings");
+
       try {
         dfsData = await batchSerpPositions({
           keywords: kwStrings,
@@ -96,6 +107,8 @@ export async function POST(request) {
           country,
           language,
         });
+        console.log(dfsData, url.title);
+
         log.push(
           `✓ DataForSEO: ${url.title} — ${Object.keys(dfsData).length} keyword positions`,
         );
@@ -116,7 +129,9 @@ export async function POST(request) {
           for (const r of gscResults) {
             gscData[r.keyword.toLowerCase()] = r;
           }
-          log.push(`✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`);
+          log.push(
+            `✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`,
+          );
         } catch (e) {
           log.push(`⚠ GSC skipped: ${e.message}`);
         }
@@ -129,7 +144,7 @@ export async function POST(request) {
         const dfs = dfsData[kw.keyword] || {};
         const gsc = gscData[kw.keyword.toLowerCase()] || {};
         const prevSnapshot = kw.snapshots?.[0];
-        
+
         // PRIMARY: DataForSEO SERP position
         const prevPos = prevSnapshot?.serpPosition || null;
         const currentPos = dfs.position || null;

@@ -32,6 +32,9 @@ const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), {
 const Line = dynamic(() => import("recharts").then((m) => m.Line), {
   ssr: false,
 });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), {
+  ssr: false,
+});
 const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), {
   ssr: false,
 });
@@ -67,7 +70,7 @@ async function api(path, options = {}) {
   if (!res.ok) {
     // Try to get error message from JSON response
     try {
-      const errorData = await res.json();
+      const errorData = await res?.json();
       throw new Error(
         errorData.error ||
           errorData.message ||
@@ -693,6 +696,44 @@ function DashboardView({ urls, alerts, onSelectUrl, onAddArticle, loading }) {
     { l: "Positive Signals", v: pos, s: "Things going well", a: "#059669" },
   ];
 
+  const data = [
+    {
+      name: "Page A",
+      uv: 4000,
+      pv: 2400,
+    },
+    {
+      name: "Page B",
+      uv: 3000,
+      pv: 1398,
+    },
+    {
+      name: "Page C",
+      uv: 2000,
+      pv: 9800,
+    },
+    {
+      name: "Page D",
+      uv: 2780,
+      pv: 3908,
+    },
+    {
+      name: "Page E",
+      uv: 1890,
+      pv: 4800,
+    },
+    {
+      name: "Page F",
+      uv: 2390,
+      pv: 3800,
+    },
+    {
+      name: "Page G",
+      uv: 3490,
+      pv: 4300,
+    },
+  ];
+
   if (loading) return <Loading />;
 
   return (
@@ -910,6 +951,35 @@ function DashboardView({ urls, alerts, onSelectUrl, onAddArticle, loading }) {
           </div>
         )}
       </div>
+
+      {/* <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          overflow: "hidden",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
+      > */}
+      <BarChart
+        style={{
+          width: "100%",
+          maxWidth: "700px",
+          maxHeight: "70vh",
+          aspectRatio: 1.618,
+        }}
+        responsive
+        data={data}
+      >
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" />
+        <YAxis width="auto" />
+        <Tooltip />
+        <Legend />
+        <Bar dataKey="pv" fill="#8884d8" isAnimationActive={true} />
+        <Bar dataKey="uv" fill="#82ca9d" isAnimationActive={true} />
+        {/* <RechartsDevtools /> */}
+      </BarChart>
+      {/* </div> */}
     </div>
   );
 }
@@ -922,6 +992,7 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState(null);
+  const [labels, setLabel] = useState();
 
   useEffect(() => {
     setLoading(true);
@@ -930,6 +1001,24 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
       setLoading(false);
     });
   }, [urlId]);
+
+  console.log(data);
+
+  useEffect(() => {
+    if (data) {
+      const updt = data?.keywords?.map((item) => item.keyword);
+      setLabel(updt);
+
+      const updtIt = data?.keywords?.flatMap(
+        (kw) =>
+          kw?.snapshots?.map((snap) => ({
+            month: snap?.serpPosition,
+          })) || [],
+      );
+
+      console.log(updtIt);
+    }
+  }, [data]);
 
   if (loading || !data)
     return (
@@ -1150,6 +1239,129 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
 
       {tab === "overview" && (
         <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#0f172a",
+                marginBottom: 16,
+              }}
+            >
+              Position Trends (6 months)
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+              Lower is better — position 1 = top of Google
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart
+                data={[
+                  {
+                    name: "May",
+                    exp: 4000,
+                    rev: 1800,
+                  },
+                  {
+                    name: "June",
+                    exp: 6000,
+                    rev: 2800,
+                  },
+                  {
+                    name: "July",
+                    exp: 2000,
+                    rev: 2500,
+                  },
+                  {
+                    name: "August",
+                    exp: 2780,
+                    rev: 3200,
+                  },
+                ]}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                />
+                <YAxis
+                  reversed
+                  domain={[1, "auto"]}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                  }}
+                />
+                <Line type="monotone" dataKey="rev" stroke="#8884d8" />
+                <Line type="monotone" dataKey="exp" stroke="#82ca9d" />
+                {/* {Object.keys(monthlyData).map((kw, i) => (
+                  <Line key={kw} type="monotone" dataKey={kw} stroke={colors[i%colors.length]} strokeWidth={2} dot={{ r:3 }} name={kw} />
+                ))} */}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* <div style={{ background:"#fff", borderRadius:12, padding:24, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
+            <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", marginBottom:16 }}>Weekly Clicks (Jan 2025)</div>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={weeklyChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="week" tick={{ fontSize:10, fill:"#94a3b8" }} />
+                <YAxis tick={{ fontSize:10, fill:"#94a3b8" }} />
+                <Tooltip contentStyle={{ fontSize:12, borderRadius:8, border:"1px solid #e2e8f0" }} />
+                {Object.keys(weeklyData).map((kw, i) => (
+                  <Bar key={kw} dataKey={kw + "_clicks"} fill={colors[i%colors.length]} name={kw} radius={[2,2,0,0]} stackId="a" />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div> */}
+
+          {/* <div style={{ background:"#fff", borderRadius:12, padding:24, boxShadow:"0 1px 3px rgba(0,0,0,0.06)", gridColumn:"1/-1" }}>
+            <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", marginBottom:16 }}>Keywords Tracked ({kws.length})</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:8 }}>
+              {kws.map((k, i) => {
+                const wk = weeklyData[k.keyword];
+                const latestPos = wk ? wk[3].p : null;
+                const prevPos = wk ? wk[2].p : null;
+                const change = latestPos && prevPos ? prevPos - latestPos : 0;
+                const mData = monthlyData[k.keyword];
+                const firstPos = mData ? mData[0] : null;
+                const lastPos = mData ? mData[mData.length-1] : null;
+                const sixMonthChange = firstPos && lastPos ? firstPos - lastPos : null;
+                return (
+                  <div key={i} style={{ padding:"12px 16px", borderRadius:8, border:"1px solid #f1f5f9", background: !k.tracked ? "#fafafa" : "#fff" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:13, fontWeight:600, color: k.tracked ? "#0f172a" : "#94a3b8" }}>{k.keyword}</span>
+                      {latestPos && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:800, color: latestPos <= 3 ? "#059669" : latestPos <= 10 ? "#0f172a" : "#dc2626" }}>#{latestPos}</span>}
+                    </div>
+                    <div style={{ display:"flex", gap:8, marginTop:6, alignItems:"center" }}>
+                      <span style={{ fontSize:10, padding:"2px 6px", borderRadius:4, background: k.source==="manual"?"#f1f5f9":"#eff6ff", color: k.source==="manual"?"#64748b":"#2563eb", fontWeight:600 }}>{k.source==="manual"?"Manual":"GSC Auto"}</span>
+                      <span style={{ fontSize:10, padding:"2px 6px", borderRadius:4, background:"#f8fafc", color:"#64748b", fontWeight:500 }}>{k.intent}</span>
+                      {change !== 0 && <span style={{ fontSize:11, fontWeight:700, color: change > 0 ? "#059669" : "#dc2626" }}>{change > 0 ? "↑" : "↓"}{Math.abs(change)} this week</span>}
+                      {sixMonthChange !== null && <span style={{ fontSize:10, color:"#94a3b8" }}>6mo: {sixMonthChange > 0 ? "+" : ""}{sixMonthChange.toFixed(1)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div> */}
+        </div>
+      )}
+
+      {/* {tab === "overview" && (
+        <div
           style={{
             background: "#fff",
             borderRadius: 12,
@@ -1262,7 +1474,7 @@ function URLDetailView({ urlId, onBack, onEdit, onDelete, onRefresh }) {
             })}
           </div>
         </div>
-      )}
+      )} */}
 
       {tab === "weekly" && (
         <div
@@ -3285,3 +3497,2482 @@ export default function Page() {
     </div>
   );
 }
+
+// import { useState, useMemo } from "react";
+// import {
+//   LineChart,
+//   Line,
+//   XAxis,
+//   YAxis,
+//   Tooltip,
+//   ResponsiveContainer,
+//   AreaChart,
+//   Area,
+//   BarChart,
+//   Bar,
+//   CartesianGrid,
+// } from "recharts";
+
+// // ── Mock Data ──────────────────────────────────────────────
+// const URLS_DATA = [
+//   {
+//     id: 1,
+//     url: "https://blockchain-ads.com/blog/what-is-web3-advertising",
+//     slug: "what-is-web3-advertising",
+//     title: "What is Web3 Advertising",
+//     category: "Advertising",
+//     status: "active",
+//     priority: "high",
+//     dateAdded: "2024-06-15",
+//     keywordCount: 6,
+//     notes: [
+//       {
+//         date: "2025-01-28",
+//         text: "Added 2025 stats, refreshed intro paragraph",
+//       },
+//       {
+//         date: "2025-01-05",
+//         text: "Noticed gradual decline #3→#8, investigating",
+//       },
+//       { date: "2024-11-10", text: "Added FAQ schema markup" },
+//       { date: "2024-08-20", text: "Updated H1 + added 3 internal links" },
+//       { date: "2024-06-15", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 2,
+//     url: "https://blockchain-ads.com/blog/crypto-gaming-ads-guide",
+//     slug: "crypto-gaming-ads-guide",
+//     title: "Crypto Gaming Ads Guide",
+//     category: "Gaming",
+//     status: "active",
+//     priority: "high",
+//     dateAdded: "2024-07-01",
+//     keywordCount: 5,
+//     notes: [
+//       { date: "2025-01-20", text: "Stable — no action needed" },
+//       { date: "2024-12-01", text: "Refreshed stats section" },
+//       { date: "2024-09-15", text: "Added video embed" },
+//       { date: "2024-07-01", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 3,
+//     url: "https://blockchain-ads.com/blog/telegram-advertising-crypto",
+//     slug: "telegram-advertising-crypto",
+//     title: "Telegram Advertising Crypto",
+//     category: "Advertising",
+//     status: "growing",
+//     priority: "high",
+//     dateAdded: "2024-09-20",
+//     keywordCount: 5,
+//     notes: [
+//       { date: "2025-01-25", text: "Hit #2 for main keyword! 🎉" },
+//       { date: "2025-01-10", text: "Trending — pushing more internal links" },
+//       { date: "2024-11-01", text: "Added Telegram Mini Apps section" },
+//       { date: "2024-09-20", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 4,
+//     url: "https://blockchain-ads.com/blog/defi-marketing-guide",
+//     slug: "defi-marketing-guide",
+//     title: "DeFi Marketing Guide",
+//     category: "Fintech",
+//     status: "declining",
+//     priority: "urgent",
+//     dateAdded: "2024-10-05",
+//     keywordCount: 5,
+//     notes: [
+//       {
+//         date: "2025-01-28",
+//         text: "Rewrite 60% done — adding yield comparison section",
+//       },
+//       { date: "2025-01-15", text: "Content refresh in progress" },
+//       {
+//         date: "2025-01-09",
+//         text: "Competitor analysis done — they added comparison tables",
+//       },
+//       { date: "2025-01-08", text: "🚨 ALERT — dropped from #4→#12 in 2 weeks" },
+//       { date: "2024-10-05", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 5,
+//     url: "https://blockchain-ads.com/blog/programmatic-crypto-advertising",
+//     slug: "programmatic-crypto-advertising",
+//     title: "Programmatic Crypto Advertising",
+//     category: "Advertising",
+//     status: "recovering",
+//     priority: "medium",
+//     dateAdded: "2024-09-01",
+//     keywordCount: 5,
+//     notes: [
+//       { date: "2025-01-20", text: "Recovery confirmed — #9→#4 since rewrite" },
+//       { date: "2024-12-15", text: "Major rewrite — updated for 2025 trends" },
+//       { date: "2024-09-01", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 6,
+//     url: "https://blockchain-ads.com/blog/fintech-advertising-strategies",
+//     slug: "fintech-advertising-strategies",
+//     title: "Fintech Advertising Strategies",
+//     category: "Fintech",
+//     status: "active",
+//     priority: "medium",
+//     dateAdded: "2024-07-20",
+//     keywordCount: 5,
+//     notes: [
+//       {
+//         date: "2025-01-15",
+//         text: "Competitor published similar piece — monitor",
+//       },
+//       { date: "2024-10-05", text: "Updated CTA section" },
+//       { date: "2024-07-20", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 7,
+//     url: "https://blockchain-ads.com/blog/nft-advertising-platforms",
+//     slug: "nft-advertising-platforms",
+//     title: "NFT Advertising Platforms",
+//     category: "Advertising",
+//     status: "declining",
+//     priority: "low",
+//     dateAdded: "2024-08-25",
+//     keywordCount: 4,
+//     notes: [
+//       { date: "2025-01-20", text: "Deprioritized — NFT market cooling" },
+//       { date: "2024-12-20", text: "Consider pivoting angle" },
+//       { date: "2024-08-25", text: "Published" },
+//     ],
+//   },
+//   {
+//     id: 8,
+//     url: "https://blockchain-ads.com/blog/mobile-app-advertising-blockchain",
+//     slug: "mobile-app-advertising-blockchain",
+//     title: "Mobile App Advertising Blockchain",
+//     category: "Mobile Apps",
+//     status: "active",
+//     priority: "medium",
+//     dateAdded: "2024-08-10",
+//     keywordCount: 4,
+//     notes: [
+//       { date: "2025-01-10", text: "Holding steady around #6-7" },
+//       { date: "2024-11-20", text: "Added comparison table" },
+//       { date: "2024-08-10", text: "Published" },
+//     ],
+//   },
+// ];
+
+// const KEYWORDS_MAP = [
+//   {
+//     urlId: 1,
+//     keyword: "web3 advertising",
+//     source: "manual",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 1,
+//     keyword: "blockchain advertising",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 1,
+//     keyword: "web3 ads",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 1,
+//     keyword: "crypto advertising platform",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 1,
+//     keyword: "decentralized advertising",
+//     source: "manual",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 1,
+//     keyword: "web3 digital marketing",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 2,
+//     keyword: "crypto gaming ads",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 2,
+//     keyword: "blockchain gaming marketing",
+//     source: "manual",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 2,
+//     keyword: "web3 gaming advertising",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 2,
+//     keyword: "play to earn advertising",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 2,
+//     keyword: "gamefi marketing",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 3,
+//     keyword: "telegram advertising crypto",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 3,
+//     keyword: "telegram crypto ads",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 3,
+//     keyword: "telegram marketing crypto",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 3,
+//     keyword: "telegram mini apps advertising",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 3,
+//     keyword: "crypto community advertising",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 4,
+//     keyword: "defi marketing",
+//     source: "manual",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 4,
+//     keyword: "defi advertising",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 4,
+//     keyword: "decentralized finance marketing",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 4,
+//     keyword: "defi user acquisition",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 4,
+//     keyword: "defi growth strategy",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 5,
+//     keyword: "programmatic crypto advertising",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 5,
+//     keyword: "crypto programmatic ads",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 5,
+//     keyword: "blockchain ad exchange",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 5,
+//     keyword: "crypto dsp",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 5,
+//     keyword: "web3 programmatic",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 6,
+//     keyword: "fintech advertising",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 6,
+//     keyword: "fintech marketing strategies",
+//     source: "manual",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 6,
+//     keyword: "financial services ads",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 6,
+//     keyword: "neobank advertising",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 6,
+//     keyword: "fintech growth marketing",
+//     source: "gsc",
+//     intent: "informational",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 7,
+//     keyword: "nft advertising",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 7,
+//     keyword: "nft marketing platform",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 7,
+//     keyword: "nft promotion",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 7,
+//     keyword: "nft drop marketing",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: false,
+//   },
+//   {
+//     urlId: 8,
+//     keyword: "blockchain mobile app ads",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 8,
+//     keyword: "crypto app advertising",
+//     source: "manual",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 8,
+//     keyword: "web3 app install ads",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+//   {
+//     urlId: 8,
+//     keyword: "dapp advertising",
+//     source: "gsc",
+//     intent: "commercial",
+//     tracked: true,
+//   },
+// ];
+
+// const months = [
+//   "Aug 2024",
+//   "Sep 2024",
+//   "Oct 2024",
+//   "Nov 2024",
+//   "Dec 2024",
+//   "Jan 2025",
+// ];
+// const weeks = ["Jan 6", "Jan 13", "Jan 20", "Jan 27"];
+
+// const MONTHLY_TRENDS = {
+//   1: {
+//     "web3 advertising": [2.4, 2.2, 2.8, 3.1, 3.5, 5.2],
+//     "blockchain advertising": [4.8, 4.5, 5.2, 5.5, 6.0, 7.2],
+//     "web3 ads": [4.0, 3.8, 4.5, 5.0, 5.5, 6.5],
+//   },
+//   2: {
+//     "crypto gaming ads": [2.5, 2.3, 2.4, 2.6, 2.5, 2.8],
+//     "blockchain gaming marketing": [4.8, 4.5, 4.8, 5.0, 4.8, 5.1],
+//   },
+//   3: {
+//     "telegram advertising crypto": [7.2, 5.8, 4.5, 3.8, 3.2, 2.8],
+//     "telegram mini apps advertising": [12.5, 11.0, 9.5, 8.2, 7.0, 6.2],
+//     "telegram crypto ads": [8.5, 7.2, 5.8, 5.0, 4.2, 3.5],
+//   },
+//   4: {
+//     "defi marketing": [3.0, 3.5, 3.8, 4.2, 5.8, 9.5],
+//     "defi advertising": [5.5, 6.0, 6.5, 7.2, 9.5, 13.5],
+//     "defi user acquisition": [4.8, 5.2, 5.5, 6.0, 8.0, 11.8],
+//   },
+//   5: {
+//     "programmatic crypto advertising": [11.2, 10.5, 9.8, 9.2, 7.5, 5.2],
+//     "crypto programmatic ads": [12.5, 11.8, 10.5, 9.8, 8.2, 5.5],
+//     "blockchain ad exchange": [14.0, 13.2, 12.0, 11.0, 9.5, 6.8],
+//   },
+//   6: {
+//     "fintech advertising": [5.8, 5.5, 6.0, 6.2, 6.5, 6.8],
+//     "fintech marketing strategies": [7.2, 6.8, 7.5, 7.8, 8.0, 8.2],
+//   },
+//   7: {
+//     "nft advertising": [6.5, 7.5, 8.8, 9.5, 11.8, 13.5],
+//     "nft marketing platform": [7.8, 8.8, 9.5, 10.5, 12.2, 14.8],
+//   },
+//   8: {
+//     "blockchain mobile app ads": [6.0, 6.2, 6.5, 6.5, 6.8, 6.5],
+//     "crypto app advertising": [7.2, 7.5, 7.2, 7.5, 7.8, 7.5],
+//   },
+// };
+
+// const WEEKLY_DATA = {
+//   1: {
+//     "web3 advertising": [
+//       { p: 5, c: 145, i: 4200 },
+//       { p: 6, c: 120, i: 4100 },
+//       { p: 8, c: 85, i: 3900 },
+//       { p: 8, c: 52, i: 3600 },
+//     ],
+//     "blockchain advertising": [
+//       { p: 6, c: 89, i: 2800 },
+//       { p: 6, c: 82, i: 2750 },
+//       { p: 7, c: 68, i: 2600 },
+//       { p: 8, c: 45, i: 2400 },
+//     ],
+//     "web3 ads": [
+//       { p: 5, c: 95, i: 3100 },
+//       { p: 5, c: 88, i: 3000 },
+//       { p: 6, c: 72, i: 2900 },
+//       { p: 7, c: 58, i: 2750 },
+//     ],
+//     "crypto advertising platform": [
+//       { p: 8, c: 42, i: 1800 },
+//       { p: 8, c: 38, i: 1750 },
+//       { p: 9, c: 30, i: 1650 },
+//       { p: 10, c: 20, i: 1500 },
+//     ],
+//     "decentralized advertising": [
+//       { p: 7, c: 35, i: 1200 },
+//       { p: 7, c: 30, i: 1150 },
+//       { p: 8, c: 25, i: 1100 },
+//       { p: 9, c: 18, i: 1000 },
+//     ],
+//     "web3 digital marketing": [
+//       { p: 9, c: 28, i: 1500 },
+//       { p: 8, c: 30, i: 1550 },
+//       { p: 9, c: 25, i: 1400 },
+//       { p: 10, c: 20, i: 1350 },
+//     ],
+//   },
+//   3: {
+//     "telegram advertising crypto": [
+//       { p: 4, c: 160, i: 3800 },
+//       { p: 3, c: 175, i: 3900 },
+//       { p: 3, c: 190, i: 4100 },
+//       { p: 2, c: 210, i: 4300 },
+//     ],
+//     "telegram crypto ads": [
+//       { p: 5, c: 65, i: 1600 },
+//       { p: 4, c: 72, i: 1700 },
+//       { p: 4, c: 82, i: 1800 },
+//       { p: 3, c: 90, i: 1900 },
+//     ],
+//     "telegram marketing crypto": [
+//       { p: 6, c: 45, i: 1300 },
+//       { p: 5, c: 52, i: 1400 },
+//       { p: 5, c: 60, i: 1500 },
+//       { p: 4, c: 65, i: 1550 },
+//     ],
+//     "telegram mini apps advertising": [
+//       { p: 9, c: 18, i: 800 },
+//       { p: 8, c: 25, i: 900 },
+//       { p: 7, c: 32, i: 1000 },
+//       { p: 6, c: 38, i: 1100 },
+//     ],
+//     "crypto community advertising": [
+//       { p: 8, c: 22, i: 950 },
+//       { p: 7, c: 28, i: 1000 },
+//       { p: 7, c: 35, i: 1100 },
+//       { p: 6, c: 40, i: 1150 },
+//     ],
+//   },
+//   4: {
+//     "defi marketing": [
+//       { p: 4, c: 180, i: 5500 },
+//       { p: 7, c: 110, i: 5200 },
+//       { p: 10, c: 45, i: 4800 },
+//       { p: 12, c: 22, i: 4500 },
+//     ],
+//     "defi advertising": [
+//       { p: 6, c: 75, i: 2100 },
+//       { p: 9, c: 40, i: 1900 },
+//       { p: 12, c: 18, i: 1700 },
+//       { p: 15, c: 8, i: 1500 },
+//     ],
+//     "decentralized finance marketing": [
+//       { p: 7, c: 50, i: 1800 },
+//       { p: 8, c: 32, i: 1600 },
+//       { p: 11, c: 15, i: 1400 },
+//       { p: 13, c: 6, i: 1200 },
+//     ],
+//     "defi user acquisition": [
+//       { p: 5, c: 62, i: 1500 },
+//       { p: 7, c: 35, i: 1350 },
+//       { p: 10, c: 18, i: 1200 },
+//       { p: 12, c: 8, i: 1050 },
+//     ],
+//     "defi growth strategy": [
+//       { p: 7, c: 38, i: 1200 },
+//       { p: 9, c: 25, i: 1100 },
+//       { p: 11, c: 12, i: 950 },
+//       { p: 14, c: 5, i: 850 },
+//     ],
+//   },
+//   5: {
+//     "programmatic crypto advertising": [
+//       { p: 9, c: 30, i: 1200 },
+//       { p: 7, c: 48, i: 1400 },
+//       { p: 5, c: 65, i: 1600 },
+//       { p: 4, c: 82, i: 1800 },
+//     ],
+//     "crypto programmatic ads": [
+//       { p: 10, c: 20, i: 900 },
+//       { p: 8, c: 32, i: 1050 },
+//       { p: 6, c: 45, i: 1200 },
+//       { p: 5, c: 55, i: 1350 },
+//     ],
+//     "blockchain ad exchange": [
+//       { p: 12, c: 12, i: 700 },
+//       { p: 10, c: 20, i: 850 },
+//       { p: 8, c: 28, i: 1000 },
+//       { p: 7, c: 38, i: 1150 },
+//     ],
+//     "crypto dsp": [
+//       { p: 11, c: 8, i: 500 },
+//       { p: 9, c: 14, i: 600 },
+//       { p: 8, c: 22, i: 750 },
+//       { p: 7, c: 30, i: 900 },
+//     ],
+//     "web3 programmatic": [
+//       { p: 13, c: 5, i: 400 },
+//       { p: 10, c: 10, i: 550 },
+//       { p: 9, c: 18, i: 700 },
+//       { p: 7, c: 25, i: 850 },
+//     ],
+//   },
+// };
+
+// const ALERTS = [
+//   {
+//     id: 1,
+//     date: "2025-01-27",
+//     urlId: 4,
+//     keyword: "defi marketing",
+//     type: "Position Drop",
+//     severity: "critical",
+//     details: "#4 → #12 in 4 weeks. Lost 158 clicks/week.",
+//     action: "Content refresh in progress. Adding yield comparison.",
+//     status: "in_progress",
+//   },
+//   {
+//     id: 2,
+//     date: "2025-01-27",
+//     urlId: 4,
+//     keyword: "defi advertising",
+//     type: "Left Page 1",
+//     severity: "critical",
+//     details: "#6 → #15. Lost page 1 entirely.",
+//     action: "Tied to defi marketing refresh.",
+//     status: "in_progress",
+//   },
+//   {
+//     id: 3,
+//     date: "2025-01-27",
+//     urlId: 4,
+//     keyword: "defi user acquisition",
+//     type: "Position Drop",
+//     severity: "warning",
+//     details: "#5 → #12. Same downward trend.",
+//     action: "Will improve with main content refresh.",
+//     status: "in_progress",
+//   },
+//   {
+//     id: 4,
+//     date: "2025-01-27",
+//     urlId: 1,
+//     keyword: "web3 advertising",
+//     type: "Gradual Decline",
+//     severity: "warning",
+//     details: "#3 → #8 over 3 months. Still page 1.",
+//     action: "Scheduled: update intro, add 2025 data.",
+//     status: "planned",
+//   },
+//   {
+//     id: 5,
+//     date: "2025-01-27",
+//     urlId: 1,
+//     keyword: "crypto advertising platform",
+//     type: "Page 1 Risk",
+//     severity: "warning",
+//     details: "Position 10 — one spot from page 2.",
+//     action: "Add crypto ad platforms section.",
+//     status: "planned",
+//   },
+//   {
+//     id: 6,
+//     date: "2025-01-20",
+//     urlId: 7,
+//     keyword: "nft advertising",
+//     type: "Steady Decline",
+//     severity: "warning",
+//     details: "#8 → #14 over 4 months.",
+//     action: "Deprioritized — reassess Q2.",
+//     status: "on_hold",
+//   },
+//   {
+//     id: 7,
+//     date: "2025-01-13",
+//     urlId: 5,
+//     keyword: "programmatic crypto advertising",
+//     type: "Recovery",
+//     severity: "positive",
+//     details: "#9 → #4 since Dec rewrite. +173% clicks.",
+//     action: "Continue monitoring.",
+//     status: "monitoring",
+//   },
+//   {
+//     id: 8,
+//     date: "2025-01-13",
+//     urlId: 3,
+//     keyword: "telegram advertising crypto",
+//     type: "New Top 3",
+//     severity: "positive",
+//     details: "Hit #2. Clicks +330% since July.",
+//     action: "Build topic cluster.",
+//     status: "monitoring",
+//   },
+//   {
+//     id: 9,
+//     date: "2025-01-13",
+//     urlId: 3,
+//     keyword: "telegram mini apps advertising",
+//     type: "Strong Climb",
+//     severity: "positive",
+//     details: "#18 → #6 in 5 months.",
+//     action: "Consider dedicated article.",
+//     status: "monitoring",
+//   },
+// ];
+
+// // ── Helpers ─────────────────────────────────────────────────
+// const statusConfig = {
+//   active: { label: "Active", color: "#64748b", bg: "#f1f5f9" },
+//   growing: { label: "Growing", color: "#059669", bg: "#ecfdf5" },
+//   declining: { label: "Declining", color: "#dc2626", bg: "#fef2f2" },
+//   recovering: { label: "Recovering", color: "#2563eb", bg: "#eff6ff" },
+// };
+
+// const severityConfig = {
+//   critical: { label: "Critical", color: "#fff", bg: "#dc2626", icon: "🔴" },
+//   warning: { label: "Warning", color: "#92400e", bg: "#fef3c7", icon: "🟡" },
+//   positive: { label: "Positive", color: "#065f46", bg: "#d1fae5", icon: "🟢" },
+// };
+
+// const statusLabels = {
+//   in_progress: { label: "In Progress", color: "#2563eb", bg: "#dbeafe" },
+//   planned: { label: "Planned", color: "#7c3aed", bg: "#ede9fe" },
+//   on_hold: { label: "On Hold", color: "#64748b", bg: "#f1f5f9" },
+//   monitoring: { label: "Monitoring", color: "#059669", bg: "#ecfdf5" },
+//   resolved: { label: "Resolved", color: "#065f46", bg: "#d1fae5" },
+// };
+
+// function Badge({ children, color, bg }) {
+//   return (
+//     <span
+//       style={{
+//         display: "inline-block",
+//         padding: "3px 10px",
+//         borderRadius: 20,
+//         fontSize: 11,
+//         fontWeight: 600,
+//         color,
+//         background: bg,
+//         letterSpacing: 0.3,
+//       }}
+//     >
+//       {children}
+//     </span>
+//   );
+// }
+
+// function Pill({ children, active, onClick }) {
+//   return (
+//     <button
+//       onClick={onClick}
+//       style={{
+//         padding: "6px 16px",
+//         borderRadius: 20,
+//         fontSize: 12,
+//         fontWeight: 600,
+//         border: "none",
+//         cursor: "pointer",
+//         background: active ? "#0f172a" : "#f1f5f9",
+//         color: active ? "#fff" : "#64748b",
+//         transition: "all 0.2s",
+//       }}
+//     >
+//       {children}
+//     </button>
+//   );
+// }
+
+// // ── Summary Cards ──────────────────────────────────────────
+// function SummaryCards() {
+//   const critAlerts = ALERTS.filter((a) => a.severity === "critical").length;
+//   const warnAlerts = ALERTS.filter((a) => a.severity === "warning").length;
+//   const posAlerts = ALERTS.filter((a) => a.severity === "positive").length;
+//   const totalKw = KEYWORDS_MAP.filter((k) => k.tracked).length;
+
+//   const cards = [
+//     {
+//       label: "URLs Tracked",
+//       value: URLS_DATA.length,
+//       sub: `${totalKw} keywords total`,
+//       accent: "#0f172a",
+//     },
+//     {
+//       label: "Critical Alerts",
+//       value: critAlerts,
+//       sub: "Need immediate action",
+//       accent: "#dc2626",
+//     },
+//     {
+//       label: "Warnings",
+//       value: warnAlerts,
+//       sub: "Monitor closely",
+//       accent: "#f59e0b",
+//     },
+//     {
+//       label: "Positive Signals",
+//       value: posAlerts,
+//       sub: "Things going well",
+//       accent: "#059669",
+//     },
+//   ];
+
+//   return (
+//     <div
+//       style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}
+//     >
+//       {cards.map((c, i) => (
+//         <div
+//           key={i}
+//           style={{
+//             background: "#fff",
+//             borderRadius: 12,
+//             padding: "20px 24px",
+//             borderLeft: `4px solid ${c.accent}`,
+//             boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//           }}
+//         >
+//           <div
+//             style={{
+//               fontSize: 12,
+//               color: "#94a3b8",
+//               fontWeight: 600,
+//               textTransform: "uppercase",
+//               letterSpacing: 1,
+//             }}
+//           >
+//             {c.label}
+//           </div>
+//           <div
+//             style={{
+//               fontSize: 32,
+//               fontWeight: 800,
+//               color: c.accent,
+//               marginTop: 4,
+//               fontFamily: "'JetBrains Mono',monospace",
+//             }}
+//           >
+//             {c.value}
+//           </div>
+//           <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+//             {c.sub}
+//           </div>
+//         </div>
+//       ))}
+//     </div>
+//   );
+// }
+
+// // ── URL List View ──────────────────────────────────────────
+// function URLListView({ onSelectUrl }) {
+//   return (
+//     <div
+//       style={{
+//         background: "#fff",
+//         borderRadius: 12,
+//         overflow: "hidden",
+//         boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//       }}
+//     >
+//       <div
+//         style={{
+//           padding: "16px 24px",
+//           borderBottom: "1px solid #f1f5f9",
+//           display: "flex",
+//           justifyContent: "space-between",
+//           alignItems: "center",
+//         }}
+//       >
+//         <div style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>
+//           All URLs
+//         </div>
+//         <div style={{ fontSize: 12, color: "#94a3b8" }}>
+//           {URLS_DATA.length} articles tracked
+//         </div>
+//       </div>
+//       {URLS_DATA.map((u) => {
+//         const sc = statusConfig[u.status];
+//         const kwData = KEYWORDS_MAP.filter(
+//           (k) => k.urlId === u.id && k.tracked,
+//         );
+//         const alerts = ALERTS.filter(
+//           (a) =>
+//             a.urlId === u.id &&
+//             (a.severity === "critical" || a.severity === "warning"),
+//         );
+//         return (
+//           <div
+//             key={u.id}
+//             onClick={() => onSelectUrl(u.id)}
+//             style={{
+//               padding: "16px 24px",
+//               borderBottom: "1px solid #f8fafc",
+//               cursor: "pointer",
+//               display: "flex",
+//               alignItems: "center",
+//               gap: 16,
+//               transition: "background 0.15s",
+//             }}
+//             onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+//             onMouseLeave={(e) =>
+//               (e.currentTarget.style.background = "transparent")
+//             }
+//           >
+//             <div
+//               style={{
+//                 width: 6,
+//                 height: 6,
+//                 borderRadius: 3,
+//                 background:
+//                   u.status === "declining"
+//                     ? "#dc2626"
+//                     : u.status === "growing"
+//                       ? "#059669"
+//                       : "#94a3b8",
+//                 flexShrink: 0,
+//               }}
+//             />
+//             <div style={{ flex: 1, minWidth: 0 }}>
+//               <div
+//                 style={{
+//                   fontSize: 13,
+//                   fontWeight: 600,
+//                   color: "#0f172a",
+//                   whiteSpace: "nowrap",
+//                   overflow: "hidden",
+//                   textOverflow: "ellipsis",
+//                 }}
+//               >
+//                 {u.title}
+//               </div>
+//               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+//                 {u.category} · {kwData.length} keywords
+//               </div>
+//             </div>
+//             <div
+//               style={{
+//                 display: "flex",
+//                 gap: 6,
+//                 alignItems: "center",
+//                 flexShrink: 0,
+//               }}
+//             >
+//               {alerts.length > 0 && (
+//                 <span
+//                   style={{
+//                     background: "#fef2f2",
+//                     color: "#dc2626",
+//                     fontSize: 10,
+//                     fontWeight: 700,
+//                     padding: "2px 8px",
+//                     borderRadius: 10,
+//                   }}
+//                 >
+//                   {alerts.length} alert{alerts.length > 1 ? "s" : ""}
+//                 </span>
+//               )}
+//               <Badge color={sc.color} bg={sc.bg}>
+//                 {sc.label}
+//               </Badge>
+//             </div>
+//             <svg
+//               width="16"
+//               height="16"
+//               viewBox="0 0 16 16"
+//               fill="none"
+//               style={{ flexShrink: 0, color: "#cbd5e1" }}
+//             >
+//               <path
+//                 d="M6 4l4 4-4 4"
+//                 stroke="currentColor"
+//                 strokeWidth="2"
+//                 strokeLinecap="round"
+//                 strokeLinejoin="round"
+//               />
+//             </svg>
+//           </div>
+//         );
+//       })}
+//     </div>
+//   );
+// }
+
+// // ── URL Detail View ────────────────────────────────────────
+// function URLDetailView({ urlId, onBack }) {
+//   const [tab, setTab] = useState("overview");
+//   const u = URLS_DATA.find((x) => x.id === urlId);
+//   const kws = KEYWORDS_MAP.filter((k) => k.urlId === urlId);
+//   const alerts = ALERTS.filter((a) => a.urlId === urlId);
+//   const monthlyData = MONTHLY_TRENDS[urlId] || {};
+//   const weeklyData = WEEKLY_DATA[urlId] || {};
+//   const sc = statusConfig[u.status];
+
+//   const chartData = months.map((m, i) => {
+//     const row = { month: m };
+//     Object.entries(monthlyData).forEach(([kw, vals]) => {
+//       row[kw] = vals[i];
+//     });
+//     return row;
+//   });
+
+//   console.log(chartData);
+
+//   const weeklyChartData = weeks.map((w, i) => {
+//     const row = { week: w, totalClicks: 0 };
+//     Object.entries(weeklyData).forEach(([kw, vals]) => {
+//       row[kw + "_pos"] = vals[i].p;
+//       row[kw + "_clicks"] = vals[i].c;
+//       row.totalClicks += vals[i].c;
+//     });
+//     return row;
+//   });
+
+//   console.log(weeklyChartData);
+
+//   const colors = [
+//     "#2563eb",
+//     "#dc2626",
+//     "#059669",
+//     "#f59e0b",
+//     "#8b5cf6",
+//     "#ec4899",
+//   ];
+
+//   const latestWeekClicks = Object.entries(weeklyData).reduce(
+//     (sum, [, vals]) => sum + vals[3].c,
+//     0,
+//   );
+//   const prevWeekClicks = Object.entries(weeklyData).reduce(
+//     (sum, [, vals]) => sum + vals[2].c,
+//     0,
+//   );
+//   const clickChange = prevWeekClicks
+//     ? Math.round(((latestWeekClicks - prevWeekClicks) / prevWeekClicks) * 100)
+//     : 0;
+
+//   return (
+//     <div>
+//       <button
+//         onClick={onBack}
+//         style={{
+//           background: "none",
+//           border: "none",
+//           cursor: "pointer",
+//           color: "#64748b",
+//           fontSize: 13,
+//           fontWeight: 600,
+//           display: "flex",
+//           alignItems: "center",
+//           gap: 6,
+//           padding: 0,
+//           marginBottom: 16,
+//         }}
+//       >
+//         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+//           <path
+//             d="M10 12L6 8l4-4"
+//             stroke="currentColor"
+//             strokeWidth="2"
+//             strokeLinecap="round"
+//             strokeLinejoin="round"
+//           />
+//         </svg>{" "}
+//         Back to all URLs
+//       </button>
+
+//       <div
+//         style={{
+//           background: "#fff",
+//           borderRadius: 12,
+//           padding: 24,
+//           boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//           marginBottom: 16,
+//         }}
+//       >
+//         <div
+//           style={{
+//             display: "flex",
+//             justifyContent: "space-between",
+//             alignItems: "flex-start",
+//           }}
+//         >
+//           <div>
+//             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+//               <h2
+//                 style={{
+//                   margin: 0,
+//                   fontSize: 20,
+//                   fontWeight: 800,
+//                   color: "#0f172a",
+//                 }}
+//               >
+//                 {u.title}
+//               </h2>
+//               <Badge color={sc.color} bg={sc.bg}>
+//                 {sc.label}
+//               </Badge>
+//             </div>
+//             <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+//               {u.url}
+//             </div>
+//           </div>
+//           <div style={{ textAlign: "right" }}>
+//             <div style={{ fontSize: 12, color: "#94a3b8" }}>
+//               This week's clicks
+//             </div>
+//             <div
+//               style={{
+//                 fontSize: 28,
+//                 fontWeight: 800,
+//                 color: "#0f172a",
+//                 fontFamily: "'JetBrains Mono',monospace",
+//               }}
+//             >
+//               {latestWeekClicks.toLocaleString()}
+//             </div>
+//             <div
+//               style={{
+//                 fontSize: 12,
+//                 fontWeight: 700,
+//                 color: clickChange >= 0 ? "#059669" : "#dc2626",
+//               }}
+//             >
+//               {clickChange >= 0 ? "+" : ""}
+//               {clickChange}% vs last week
+//             </div>
+//           </div>
+//         </div>
+
+//         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+//           {["overview", "weekly", "alerts", "notes"].map((t) => (
+//             <Pill key={t} active={tab === t} onClick={() => setTab(t)}>
+//               {t === "overview"
+//                 ? "Position Trends"
+//                 : t === "weekly"
+//                   ? "Weekly Detail"
+//                   : t === "alerts"
+//                     ? `Alerts (${alerts.length})`
+//                     : "Change Log"}
+//             </Pill>
+//           ))}
+//         </div>
+//       </div>
+
+//       {tab === "overview" && (
+//         <div
+//           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
+//         >
+//           <div
+//             style={{
+//               background: "#fff",
+//               borderRadius: 12,
+//               padding: 24,
+//               boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//             }}
+//           >
+//             <div
+//               style={{
+//                 fontSize: 14,
+//                 fontWeight: 700,
+//                 color: "#0f172a",
+//                 marginBottom: 16,
+//               }}
+//             >
+//               Position Trends (6 months)
+//             </div>
+//             <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+//               Lower is better — position 1 = top of Google
+//             </div>
+//             <ResponsiveContainer width="100%" height={260}>
+//               <LineChart data={chartData}>
+//                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+//                 <XAxis
+//                   dataKey="month"
+//                   tick={{ fontSize: 10, fill: "#94a3b8" }}
+//                 />
+//                 <YAxis
+//                   reversed
+//                   domain={[1, "auto"]}
+//                   tick={{ fontSize: 10, fill: "#94a3b8" }}
+//                 />
+//                 <Tooltip
+//                   contentStyle={{
+//                     fontSize: 12,
+//                     borderRadius: 8,
+//                     border: "1px solid #e2e8f0",
+//                   }}
+//                 />
+//                 {Object.keys(monthlyData).map((kw, i) => (
+//                   <Line
+//                     key={kw}
+//                     type="monotone"
+//                     dataKey={kw}
+//                     stroke={colors[i % colors.length]}
+//                     strokeWidth={2}
+//                     dot={{ r: 3 }}
+//                     name={kw}
+//                   />
+//                 ))}
+//               </LineChart>
+//             </ResponsiveContainer>
+//           </div>
+
+//           <div
+//             style={{
+//               background: "#fff",
+//               borderRadius: 12,
+//               padding: 24,
+//               boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//             }}
+//           >
+//             <div
+//               style={{
+//                 fontSize: 14,
+//                 fontWeight: 700,
+//                 color: "#0f172a",
+//                 marginBottom: 16,
+//               }}
+//             >
+//               Weekly Clicks (Jan 2025)
+//             </div>
+//             <ResponsiveContainer width="100%" height={260}>
+//               <BarChart data={weeklyChartData}>
+//                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+//                 <XAxis
+//                   dataKey="week"
+//                   tick={{ fontSize: 10, fill: "#94a3b8" }}
+//                 />
+//                 <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
+//                 <Tooltip
+//                   contentStyle={{
+//                     fontSize: 12,
+//                     borderRadius: 8,
+//                     border: "1px solid #e2e8f0",
+//                   }}
+//                 />
+//                 {Object.keys(weeklyData).map((kw, i) => (
+//                   <Bar
+//                     key={kw}
+//                     dataKey={kw + "_clicks"}
+//                     fill={colors[i % colors.length]}
+//                     name={kw}
+//                     radius={[2, 2, 0, 0]}
+//                     stackId="a"
+//                   />
+//                 ))}
+//               </BarChart>
+//             </ResponsiveContainer>
+//           </div>
+
+//           <div
+//             style={{
+//               background: "#fff",
+//               borderRadius: 12,
+//               padding: 24,
+//               boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//               gridColumn: "1/-1",
+//             }}
+//           >
+//             <div
+//               style={{
+//                 fontSize: 14,
+//                 fontWeight: 700,
+//                 color: "#0f172a",
+//                 marginBottom: 16,
+//               }}
+//             >
+//               Keywords Tracked ({kws.length})
+//             </div>
+//             <div
+//               style={{
+//                 display: "grid",
+//                 gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))",
+//                 gap: 8,
+//               }}
+//             >
+//               {kws.map((k, i) => {
+//                 const wk = weeklyData[k.keyword];
+//                 const latestPos = wk ? wk[3].p : null;
+//                 const prevPos = wk ? wk[2].p : null;
+//                 const change = latestPos && prevPos ? prevPos - latestPos : 0;
+//                 const mData = monthlyData[k.keyword];
+//                 const firstPos = mData ? mData[0] : null;
+//                 const lastPos = mData ? mData[mData.length - 1] : null;
+//                 const sixMonthChange =
+//                   firstPos && lastPos ? firstPos - lastPos : null;
+//                 return (
+//                   <div
+//                     key={i}
+//                     style={{
+//                       padding: "12px 16px",
+//                       borderRadius: 8,
+//                       border: "1px solid #f1f5f9",
+//                       background: !k.tracked ? "#fafafa" : "#fff",
+//                     }}
+//                   >
+//                     <div
+//                       style={{
+//                         display: "flex",
+//                         justifyContent: "space-between",
+//                         alignItems: "center",
+//                       }}
+//                     >
+//                       <span
+//                         style={{
+//                           fontSize: 13,
+//                           fontWeight: 600,
+//                           color: k.tracked ? "#0f172a" : "#94a3b8",
+//                         }}
+//                       >
+//                         {k.keyword}
+//                       </span>
+//                       {latestPos && (
+//                         <span
+//                           style={{
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                             fontSize: 14,
+//                             fontWeight: 800,
+//                             color:
+//                               latestPos <= 3
+//                                 ? "#059669"
+//                                 : latestPos <= 10
+//                                   ? "#0f172a"
+//                                   : "#dc2626",
+//                           }}
+//                         >
+//                           #{latestPos}
+//                         </span>
+//                       )}
+//                     </div>
+//                     <div
+//                       style={{
+//                         display: "flex",
+//                         gap: 8,
+//                         marginTop: 6,
+//                         alignItems: "center",
+//                       }}
+//                     >
+//                       <span
+//                         style={{
+//                           fontSize: 10,
+//                           padding: "2px 6px",
+//                           borderRadius: 4,
+//                           background:
+//                             k.source === "manual" ? "#f1f5f9" : "#eff6ff",
+//                           color: k.source === "manual" ? "#64748b" : "#2563eb",
+//                           fontWeight: 600,
+//                         }}
+//                       >
+//                         {k.source === "manual" ? "Manual" : "GSC Auto"}
+//                       </span>
+//                       <span
+//                         style={{
+//                           fontSize: 10,
+//                           padding: "2px 6px",
+//                           borderRadius: 4,
+//                           background: "#f8fafc",
+//                           color: "#64748b",
+//                           fontWeight: 500,
+//                         }}
+//                       >
+//                         {k.intent}
+//                       </span>
+//                       {change !== 0 && (
+//                         <span
+//                           style={{
+//                             fontSize: 11,
+//                             fontWeight: 700,
+//                             color: change > 0 ? "#059669" : "#dc2626",
+//                           }}
+//                         >
+//                           {change > 0 ? "↑" : "↓"}
+//                           {Math.abs(change)} this week
+//                         </span>
+//                       )}
+//                       {sixMonthChange !== null && (
+//                         <span style={{ fontSize: 10, color: "#94a3b8" }}>
+//                           6mo: {sixMonthChange > 0 ? "+" : ""}
+//                           {sixMonthChange.toFixed(1)}
+//                         </span>
+//                       )}
+//                     </div>
+//                   </div>
+//                 );
+//               })}
+//             </div>
+//           </div>
+//         </div>
+//       )}
+
+//       {tab === "weekly" && (
+//         <div
+//           style={{
+//             background: "#fff",
+//             borderRadius: 12,
+//             overflow: "hidden",
+//             boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//           }}
+//         >
+//           <div style={{ overflowX: "auto" }}>
+//             <table
+//               style={{
+//                 width: "100%",
+//                 borderCollapse: "collapse",
+//                 fontSize: 12,
+//               }}
+//             >
+//               <thead>
+//                 <tr style={{ background: "#f8fafc" }}>
+//                   {[
+//                     "Week",
+//                     "Keyword",
+//                     "SERP Pos",
+//                     "Prev",
+//                     "Change",
+//                     "Clicks",
+//                     "Impressions",
+//                     "CTR",
+//                     "Page",
+//                     "Alert",
+//                   ].map((h) => (
+//                     <th
+//                       key={h}
+//                       style={{
+//                         padding: "12px 14px",
+//                         textAlign: "left",
+//                         fontWeight: 700,
+//                         color: "#64748b",
+//                         fontSize: 11,
+//                         textTransform: "uppercase",
+//                         letterSpacing: 0.5,
+//                         borderBottom: "2px solid #e2e8f0",
+//                       }}
+//                     >
+//                       {h}
+//                     </th>
+//                   ))}
+//                 </tr>
+//               </thead>
+//               <tbody>
+//                 {weeks.map((w, wi) =>
+//                   Object.entries(weeklyData).map(([kw, vals], ki) => {
+//                     const d = vals[wi];
+//                     const prev = wi > 0 ? vals[wi - 1].p : d.p;
+//                     const change = prev - d.p;
+//                     const ctr =
+//                       d.i > 0 ? ((d.c / d.i) * 100).toFixed(1) : "0.0";
+//                     const page = Math.ceil(d.p / 10);
+//                     let alert = "";
+//                     if (wi > 0) {
+//                       const drop = d.p - vals[wi - 1].p;
+//                       if (vals[wi - 1].p <= 10 && d.p > 10)
+//                         alert = "🔴 LEFT PAGE 1";
+//                       else if (drop >= 3) alert = `🔴 -${drop} pos`;
+//                       else if (drop >= 2) alert = `🟡 -${drop} pos`;
+//                       else if (drop <= -3) alert = `🟢 +${Math.abs(drop)} pos`;
+//                       else if (drop <= -2) alert = `🟢 +${Math.abs(drop)} pos`;
+//                     }
+//                     return (
+//                       <tr
+//                         key={`${wi}-${ki}`}
+//                         style={{
+//                           borderBottom: "1px solid #f8fafc",
+//                           background: wi % 2 === 0 ? "#fff" : "#fafbfc",
+//                         }}
+//                       >
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontWeight: 600,
+//                             color: "#0f172a",
+//                           }}
+//                         >
+//                           {w}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             color: "#334155",
+//                             fontWeight: 500,
+//                           }}
+//                         >
+//                           {kw}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                             fontWeight: 700,
+//                             color:
+//                               d.p <= 3
+//                                 ? "#059669"
+//                                 : d.p <= 10
+//                                   ? "#0f172a"
+//                                   : "#dc2626",
+//                           }}
+//                         >
+//                           #{d.p}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                             color: "#94a3b8",
+//                           }}
+//                         >
+//                           #{prev}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontWeight: 700,
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                             color:
+//                               change > 0
+//                                 ? "#059669"
+//                                 : change < 0
+//                                   ? "#dc2626"
+//                                   : "#94a3b8",
+//                           }}
+//                         >
+//                           {change > 0 ? "+" : ""}
+//                           {change}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                           }}
+//                         >
+//                           {d.c}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                             color: "#94a3b8",
+//                           }}
+//                         >
+//                           {d.i.toLocaleString()}
+//                         </td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontFamily: "'JetBrains Mono',monospace",
+//                           }}
+//                         >
+//                           {ctr}%
+//                         </td>
+//                         <td style={{ padding: "10px 14px" }}>{page}</td>
+//                         <td
+//                           style={{
+//                             padding: "10px 14px",
+//                             fontSize: 11,
+//                             fontWeight: 600,
+//                             color: alert.includes("🔴")
+//                               ? "#dc2626"
+//                               : alert.includes("🟡")
+//                                 ? "#d97706"
+//                                 : alert.includes("🟢")
+//                                   ? "#059669"
+//                                   : "#94a3b8",
+//                           }}
+//                         >
+//                           {alert || "—"}
+//                         </td>
+//                       </tr>
+//                     );
+//                   }),
+//                 )}
+//               </tbody>
+//             </table>
+//           </div>
+//         </div>
+//       )}
+
+//       {tab === "alerts" && (
+//         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+//           {alerts.length === 0 && (
+//             <div
+//               style={{
+//                 background: "#fff",
+//                 borderRadius: 12,
+//                 padding: 40,
+//                 textAlign: "center",
+//                 color: "#94a3b8",
+//               }}
+//             >
+//               No alerts for this URL
+//             </div>
+//           )}
+//           {alerts.map((a) => {
+//             const sev = severityConfig[a.severity];
+//             const st = statusLabels[a.status];
+//             return (
+//               <div
+//                 key={a.id}
+//                 style={{
+//                   background: "#fff",
+//                   borderRadius: 12,
+//                   padding: "18px 24px",
+//                   boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//                   borderLeft: `4px solid ${sev.bg}`,
+//                   display: "flex",
+//                   gap: 16,
+//                   alignItems: "flex-start",
+//                 }}
+//               >
+//                 <span style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>
+//                   {sev.icon}
+//                 </span>
+//                 <div style={{ flex: 1 }}>
+//                   <div
+//                     style={{
+//                       display: "flex",
+//                       gap: 8,
+//                       alignItems: "center",
+//                       flexWrap: "wrap",
+//                     }}
+//                   >
+//                     <span
+//                       style={{
+//                         fontWeight: 700,
+//                         fontSize: 13,
+//                         color: "#0f172a",
+//                       }}
+//                     >
+//                       {a.keyword}
+//                     </span>
+//                     <Badge color={sev.color} bg={sev.bg}>
+//                       {a.type}
+//                     </Badge>
+//                     <Badge color={st.color} bg={st.bg}>
+//                       {st.label}
+//                     </Badge>
+//                   </div>
+//                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+//                     {a.details}
+//                   </div>
+//                   {a.action && (
+//                     <div
+//                       style={{
+//                         fontSize: 12,
+//                         color: "#334155",
+//                         marginTop: 6,
+//                         padding: "8px 12px",
+//                         background: "#f8fafc",
+//                         borderRadius: 6,
+//                       }}
+//                     >
+//                       📝 {a.action}
+//                     </div>
+//                   )}
+//                 </div>
+//                 <div style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>
+//                   {a.date}
+//                 </div>
+//               </div>
+//             );
+//           })}
+//         </div>
+//       )}
+
+//       {tab === "notes" && (
+//         <div
+//           style={{
+//             background: "#fff",
+//             borderRadius: 12,
+//             padding: 24,
+//             boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//           }}
+//         >
+//           <div
+//             style={{
+//               fontSize: 14,
+//               fontWeight: 700,
+//               color: "#0f172a",
+//               marginBottom: 16,
+//             }}
+//           >
+//             Change Log
+//           </div>
+//           <div style={{ position: "relative", paddingLeft: 20 }}>
+//             <div
+//               style={{
+//                 position: "absolute",
+//                 left: 5,
+//                 top: 4,
+//                 bottom: 4,
+//                 width: 2,
+//                 background: "#e2e8f0",
+//               }}
+//             />
+//             {u.notes.map((n, i) => (
+//               <div
+//                 key={i}
+//                 style={{
+//                   position: "relative",
+//                   paddingBottom: 20,
+//                   paddingLeft: 20,
+//                 }}
+//               >
+//                 <div
+//                   style={{
+//                     position: "absolute",
+//                     left: -3,
+//                     top: 6,
+//                     width: 8,
+//                     height: 8,
+//                     borderRadius: 4,
+//                     background:
+//                       i === 0
+//                         ? "#2563eb"
+//                         : n.text.includes("ALERT") || n.text.includes("🚨")
+//                           ? "#dc2626"
+//                           : n.text.includes("🎉")
+//                             ? "#059669"
+//                             : "#cbd5e1",
+//                     border: "2px solid #fff",
+//                   }}
+//                 />
+//                 <div
+//                   style={{
+//                     fontSize: 11,
+//                     fontWeight: 700,
+//                     color: "#94a3b8",
+//                     fontFamily: "'JetBrains Mono',monospace",
+//                   }}
+//                 >
+//                   {n.date}
+//                 </div>
+//                 <div
+//                   style={{
+//                     fontSize: 13,
+//                     color: "#334155",
+//                     marginTop: 4,
+//                     lineHeight: 1.5,
+//                   }}
+//                 >
+//                   {n.text}
+//                 </div>
+//               </div>
+//             ))}
+//           </div>
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
+// // ── Alerts Inbox View ──────────────────────────────────────
+// function AlertsView({ onSelectUrl }) {
+//   const [filter, setFilter] = useState("all");
+//   const filtered =
+//     filter === "all" ? ALERTS : ALERTS.filter((a) => a.severity === filter);
+
+//   return (
+//     <div>
+//       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+//         {[
+//           ["all", "All"],
+//           ["critical", "Critical"],
+//           ["warning", "Warning"],
+//           ["positive", "Positive"],
+//         ].map(([k, l]) => (
+//           <Pill key={k} active={filter === k} onClick={() => setFilter(k)}>
+//             {l} (
+//             {k === "all"
+//               ? ALERTS.length
+//               : ALERTS.filter((a) => a.severity === k).length}
+//             )
+//           </Pill>
+//         ))}
+//       </div>
+//       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+//         {filtered.map((a) => {
+//           const sev = severityConfig[a.severity];
+//           const st = statusLabels[a.status];
+//           const u = URLS_DATA.find((x) => x.id === a.urlId);
+//           return (
+//             <div
+//               key={a.id}
+//               style={{
+//                 background: "#fff",
+//                 borderRadius: 12,
+//                 padding: "18px 24px",
+//                 boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//                 borderLeft: `4px solid ${sev.bg}`,
+//               }}
+//             >
+//               <div
+//                 style={{
+//                   display: "flex",
+//                   justifyContent: "space-between",
+//                   alignItems: "flex-start",
+//                 }}
+//               >
+//                 <div>
+//                   <div
+//                     style={{
+//                       display: "flex",
+//                       gap: 8,
+//                       alignItems: "center",
+//                       flexWrap: "wrap",
+//                     }}
+//                   >
+//                     <span style={{ fontSize: 16 }}>{sev.icon}</span>
+//                     <span
+//                       style={{
+//                         fontWeight: 700,
+//                         fontSize: 13,
+//                         color: "#0f172a",
+//                       }}
+//                     >
+//                       {a.keyword}
+//                     </span>
+//                     <Badge color={sev.color} bg={sev.bg}>
+//                       {a.type}
+//                     </Badge>
+//                     <Badge color={st.color} bg={st.bg}>
+//                       {st.label}
+//                     </Badge>
+//                   </div>
+//                   <div
+//                     onClick={() => onSelectUrl(a.urlId)}
+//                     style={{
+//                       fontSize: 11,
+//                       color: "#2563eb",
+//                       marginTop: 6,
+//                       cursor: "pointer",
+//                       fontWeight: 500,
+//                     }}
+//                   >
+//                     {u?.title}
+//                   </div>
+//                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+//                     {a.details}
+//                   </div>
+//                   {a.action && (
+//                     <div
+//                       style={{
+//                         fontSize: 12,
+//                         color: "#334155",
+//                         marginTop: 8,
+//                         padding: "8px 12px",
+//                         background: "#f8fafc",
+//                         borderRadius: 6,
+//                       }}
+//                     >
+//                       📝 {a.action}
+//                     </div>
+//                   )}
+//                 </div>
+//                 <div style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>
+//                   {a.date}
+//                 </div>
+//               </div>
+//             </div>
+//           );
+//         })}
+//       </div>
+//     </div>
+//   );
+// }
+
+// // ── Weekly Report View ─────────────────────────────────────
+// function WeeklyReportView({ onSelectUrl }) {
+//   const [selectedWeek, setSelectedWeek] = useState(3);
+
+//   const rows = [];
+//   Object.entries(WEEKLY_DATA).forEach(([urlIdStr, kwData]) => {
+//     const urlId = parseInt(urlIdStr);
+//     const u = URLS_DATA.find((x) => x.id === urlId);
+//     Object.entries(kwData).forEach(([kw, vals]) => {
+//       const d = vals[selectedWeek];
+//       const prev = selectedWeek > 0 ? vals[selectedWeek - 1].p : d.p;
+//       const change = prev - d.p;
+//       rows.push({
+//         urlId,
+//         url: u.title,
+//         keyword: kw,
+//         pos: d.p,
+//         prev,
+//         change,
+//         clicks: d.c,
+//         impr: d.i,
+//         ctr: d.i > 0 ? (d.c / d.i) * 100 : 0,
+//       });
+//     });
+//   });
+
+//   rows.sort((a, b) =>
+//     b.change === a.change ? a.pos - b.pos : a.change - b.change,
+//   );
+
+//   return (
+//     <div>
+//       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+//         {weeks.map((w, i) => (
+//           <Pill
+//             key={i}
+//             active={selectedWeek === i}
+//             onClick={() => setSelectedWeek(i)}
+//           >
+//             Week of {w}
+//           </Pill>
+//         ))}
+//       </div>
+//       <div
+//         style={{
+//           background: "#fff",
+//           borderRadius: 12,
+//           overflow: "hidden",
+//           boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//         }}
+//       >
+//         <div style={{ overflowX: "auto" }}>
+//           <table
+//             style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+//           >
+//             <thead>
+//               <tr style={{ background: "#f8fafc" }}>
+//                 {[
+//                   "Article",
+//                   "Keyword",
+//                   "Position",
+//                   "Change",
+//                   "Clicks",
+//                   "Impressions",
+//                   "CTR",
+//                   "Alert",
+//                 ].map((h) => (
+//                   <th
+//                     key={h}
+//                     style={{
+//                       padding: "12px 14px",
+//                       textAlign: "left",
+//                       fontWeight: 700,
+//                       color: "#64748b",
+//                       fontSize: 11,
+//                       textTransform: "uppercase",
+//                       letterSpacing: 0.5,
+//                       borderBottom: "2px solid #e2e8f0",
+//                     }}
+//                   >
+//                     {h}
+//                   </th>
+//                 ))}
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {rows.map((r, i) => {
+//                 let alert = "";
+//                 if (selectedWeek > 0) {
+//                   if (r.prev <= 10 && r.pos > 10) alert = "🔴 LEFT PAGE 1";
+//                   else if (r.change <= -3)
+//                     alert = `🔴 Dropped ${Math.abs(r.change)}`;
+//                   else if (r.change <= -2) alert = `🟡 Slipping`;
+//                   else if (r.change >= 3) alert = `🟢 +${r.change} pos`;
+//                   else if (r.change >= 2) alert = `🟢 Climbing`;
+//                 }
+//                 return (
+//                   <tr
+//                     key={i}
+//                     style={{
+//                       borderBottom: "1px solid #f8fafc",
+//                       background: i % 2 === 0 ? "#fff" : "#fafbfc",
+//                     }}
+//                   >
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         cursor: "pointer",
+//                         color: "#2563eb",
+//                         fontWeight: 500,
+//                       }}
+//                       onClick={() => onSelectUrl(r.urlId)}
+//                     >
+//                       {r.url}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontWeight: 600,
+//                         color: "#334155",
+//                       }}
+//                     >
+//                       {r.keyword}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontFamily: "'JetBrains Mono',monospace",
+//                         fontWeight: 700,
+//                         color:
+//                           r.pos <= 3
+//                             ? "#059669"
+//                             : r.pos <= 10
+//                               ? "#0f172a"
+//                               : "#dc2626",
+//                       }}
+//                     >
+//                       #{r.pos}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontFamily: "'JetBrains Mono',monospace",
+//                         fontWeight: 700,
+//                         color:
+//                           r.change > 0
+//                             ? "#059669"
+//                             : r.change < 0
+//                               ? "#dc2626"
+//                               : "#94a3b8",
+//                       }}
+//                     >
+//                       {r.change > 0 ? "↑" : r.change < 0 ? "↓" : "→"}
+//                       {Math.abs(r.change)}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontFamily: "'JetBrains Mono',monospace",
+//                       }}
+//                     >
+//                       {r.clicks}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontFamily: "'JetBrains Mono',monospace",
+//                         color: "#94a3b8",
+//                       }}
+//                     >
+//                       {r.impr.toLocaleString()}
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontFamily: "'JetBrains Mono',monospace",
+//                       }}
+//                     >
+//                       {r.ctr.toFixed(1)}%
+//                     </td>
+//                     <td
+//                       style={{
+//                         padding: "10px 14px",
+//                         fontSize: 11,
+//                         fontWeight: 600,
+//                         color: alert.includes("🔴")
+//                           ? "#dc2626"
+//                           : alert.includes("🟡")
+//                             ? "#d97706"
+//                             : alert.includes("🟢")
+//                               ? "#059669"
+//                               : "#94a3b8",
+//                       }}
+//                     >
+//                       {alert || "—"}
+//                     </td>
+//                   </tr>
+//                 );
+//               })}
+//             </tbody>
+//           </table>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+// // ── Keywords Management View ───────────────────────────────
+// function KeywordsView() {
+//   const [filterUrl, setFilterUrl] = useState("all");
+//   const filtered =
+//     filterUrl === "all"
+//       ? KEYWORDS_MAP
+//       : KEYWORDS_MAP.filter((k) => k.urlId === parseInt(filterUrl));
+
+//   return (
+//     <div>
+//       <div
+//         style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}
+//       >
+//         <Pill active={filterUrl === "all"} onClick={() => setFilterUrl("all")}>
+//           All ({KEYWORDS_MAP.length})
+//         </Pill>
+//         {URLS_DATA.map((u) => {
+//           const count = KEYWORDS_MAP.filter((k) => k.urlId === u.id).length;
+//           return (
+//             <Pill
+//               key={u.id}
+//               active={filterUrl === String(u.id)}
+//               onClick={() => setFilterUrl(String(u.id))}
+//             >
+//               {u.title.split(" ").slice(0, 3).join(" ")}... ({count})
+//             </Pill>
+//           );
+//         })}
+//       </div>
+//       <div
+//         style={{
+//           background: "#fff",
+//           borderRadius: 12,
+//           overflow: "hidden",
+//           boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+//         }}
+//       >
+//         <table
+//           style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+//         >
+//           <thead>
+//             <tr style={{ background: "#f8fafc" }}>
+//               {[
+//                 "Keyword",
+//                 "Article",
+//                 "Source",
+//                 "Intent",
+//                 "Tracked",
+//                 "Current Pos",
+//               ].map((h) => (
+//                 <th
+//                   key={h}
+//                   style={{
+//                     padding: "12px 14px",
+//                     textAlign: "left",
+//                     fontWeight: 700,
+//                     color: "#64748b",
+//                     fontSize: 11,
+//                     textTransform: "uppercase",
+//                     letterSpacing: 0.5,
+//                     borderBottom: "2px solid #e2e8f0",
+//                   }}
+//                 >
+//                   {h}
+//                 </th>
+//               ))}
+//             </tr>
+//           </thead>
+//           <tbody>
+//             {filtered.map((k, i) => {
+//               const u = URLS_DATA.find((x) => x.id === k.urlId);
+//               const wk = WEEKLY_DATA[k.urlId]?.[k.keyword];
+//               const pos = wk ? wk[3].p : null;
+//               return (
+//                 <tr
+//                   key={i}
+//                   style={{
+//                     borderBottom: "1px solid #f8fafc",
+//                     background: i % 2 === 0 ? "#fff" : "#fafbfc",
+//                     opacity: k.tracked ? 1 : 0.5,
+//                   }}
+//                 >
+//                   <td
+//                     style={{
+//                       padding: "10px 14px",
+//                       fontWeight: 600,
+//                       color: "#0f172a",
+//                     }}
+//                   >
+//                     {k.keyword}
+//                   </td>
+//                   <td
+//                     style={{
+//                       padding: "10px 14px",
+//                       color: "#64748b",
+//                       fontSize: 11,
+//                     }}
+//                   >
+//                     {u?.title}
+//                   </td>
+//                   <td style={{ padding: "10px 14px" }}>
+//                     <span
+//                       style={{
+//                         fontSize: 10,
+//                         padding: "2px 8px",
+//                         borderRadius: 4,
+//                         background:
+//                           k.source === "manual" ? "#f1f5f9" : "#eff6ff",
+//                         color: k.source === "manual" ? "#64748b" : "#2563eb",
+//                         fontWeight: 600,
+//                       }}
+//                     >
+//                       {k.source === "manual" ? "Manual" : "GSC Auto"}
+//                     </span>
+//                   </td>
+//                   <td style={{ padding: "10px 14px" }}>
+//                     <span
+//                       style={{
+//                         fontSize: 10,
+//                         padding: "2px 8px",
+//                         borderRadius: 4,
+//                         background: "#f8fafc",
+//                         color: "#64748b",
+//                         fontWeight: 500,
+//                       }}
+//                     >
+//                       {k.intent}
+//                     </span>
+//                   </td>
+//                   <td style={{ padding: "10px 14px" }}>
+//                     {k.tracked ? (
+//                       <span style={{ color: "#059669", fontWeight: 700 }}>
+//                         ✓ Active
+//                       </span>
+//                     ) : (
+//                       <span style={{ color: "#94a3b8" }}>Paused</span>
+//                     )}
+//                   </td>
+//                   <td
+//                     style={{
+//                       padding: "10px 14px",
+//                       fontFamily: "'JetBrains Mono',monospace",
+//                       fontWeight: 700,
+//                       color: pos
+//                         ? pos <= 3
+//                           ? "#059669"
+//                           : pos <= 10
+//                             ? "#0f172a"
+//                             : "#dc2626"
+//                         : "#94a3b8",
+//                     }}
+//                   >
+//                     {pos ? `#${pos}` : "—"}
+//                   </td>
+//                 </tr>
+//               );
+//             })}
+//           </tbody>
+//         </table>
+//       </div>
+//     </div>
+//   );
+// }
+
+// // ── Main App ───────────────────────────────────────────────
+// export default function App() {
+//   const [view, setView] = useState("dashboard");
+//   const [selectedUrl, setSelectedUrl] = useState(null);
+
+//   const navItems = [
+//     { id: "dashboard", label: "Dashboard", icon: "◉" },
+//     { id: "weekly", label: "Weekly Report", icon: "◫" },
+//     {
+//       id: "alerts",
+//       label: "Alerts",
+//       icon: "⚠",
+//       badge: ALERTS.filter((a) => a.severity === "critical").length,
+//     },
+//     { id: "keywords", label: "Keywords", icon: "⌗" },
+//   ];
+
+//   const handleSelectUrl = (id) => {
+//     setSelectedUrl(id);
+//     setView("url_detail");
+//   };
+//   const handleBack = () => {
+//     setSelectedUrl(null);
+//     setView("dashboard");
+//   };
+
+//   return (
+//     <div
+//       style={{
+//         display: "flex",
+//         minHeight: "100vh",
+//         background: "#f8fafc",
+//         fontFamily:
+//           "'Instrument Sans','SF Pro Display',-apple-system,sans-serif",
+//       }}
+//     >
+//       {/* Sidebar */}
+//       <div
+//         style={{
+//           width: 220,
+//           background: "#0f172a",
+//           padding: "0",
+//           flexShrink: 0,
+//           display: "flex",
+//           flexDirection: "column",
+//         }}
+//       >
+//         <div style={{ padding: "24px 20px 20px" }}>
+//           <div
+//             style={{
+//               fontSize: 15,
+//               fontWeight: 800,
+//               color: "#fff",
+//               letterSpacing: -0.5,
+//             }}
+//           >
+//             Ranking Tracker
+//           </div>
+//           <div
+//             style={{
+//               fontSize: 10,
+//               color: "#475569",
+//               marginTop: 2,
+//               fontWeight: 600,
+//               textTransform: "uppercase",
+//               letterSpacing: 1,
+//             }}
+//           >
+//             blockchain-ads.com
+//           </div>
+//         </div>
+//         <div style={{ padding: "0 12px", flex: 1 }}>
+//           {navItems.map((n) => (
+//             <button
+//               key={n.id}
+//               onClick={() => {
+//                 setView(n.id);
+//                 setSelectedUrl(null);
+//               }}
+//               style={{
+//                 display: "flex",
+//                 alignItems: "center",
+//                 gap: 10,
+//                 width: "100%",
+//                 padding: "10px 12px",
+//                 marginBottom: 2,
+//                 borderRadius: 8,
+//                 border: "none",
+//                 cursor: "pointer",
+//                 fontSize: 13,
+//                 fontWeight: 600,
+//                 textAlign: "left",
+//                 background:
+//                   view === n.id ||
+//                   (n.id === "dashboard" && view === "url_detail")
+//                     ? "#1e293b"
+//                     : "transparent",
+//                 color:
+//                   view === n.id ||
+//                   (n.id === "dashboard" && view === "url_detail")
+//                     ? "#fff"
+//                     : "#64748b",
+//                 transition: "all 0.15s",
+//               }}
+//             >
+//               <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>
+//                 {n.icon}
+//               </span>
+//               {n.label}
+//               {n.badge > 0 && (
+//                 <span
+//                   style={{
+//                     marginLeft: "auto",
+//                     background: "#dc2626",
+//                     color: "#fff",
+//                     fontSize: 10,
+//                     fontWeight: 700,
+//                     padding: "1px 7px",
+//                     borderRadius: 10,
+//                   }}
+//                 >
+//                   {n.badge}
+//                 </span>
+//               )}
+//             </button>
+//           ))}
+//         </div>
+//         <div style={{ padding: "16px 20px", borderTop: "1px solid #1e293b" }}>
+//           <div style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>
+//             Last sync
+//           </div>
+//           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+//             Mon Jan 27, 6:00 AM
+//           </div>
+//           <div
+//             style={{
+//               fontSize: 10,
+//               color: "#059669",
+//               marginTop: 4,
+//               fontWeight: 600,
+//             }}
+//           >
+//             ● Script healthy
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* Main content */}
+//       <div
+//         style={{
+//           flex: 1,
+//           padding: "24px 32px",
+//           maxWidth: 1100,
+//           overflowY: "auto",
+//         }}
+//       >
+//         <div style={{ marginBottom: 24 }}>
+//           <h1
+//             style={{
+//               margin: 0,
+//               fontSize: 22,
+//               fontWeight: 800,
+//               color: "#0f172a",
+//               letterSpacing: -0.5,
+//             }}
+//           >
+//             {view === "dashboard" || view === "url_detail"
+//               ? "Dashboard"
+//               : view === "weekly"
+//                 ? "Weekly Report"
+//                 : view === "alerts"
+//                   ? "Alerts Inbox"
+//                   : "Keywords Map"}
+//           </h1>
+//           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#94a3b8" }}>
+//             {view === "dashboard"
+//               ? "Monday morning overview — scan for red, action what matters"
+//               : view === "url_detail"
+//                 ? "Deep dive into article performance"
+//                 : view === "weekly"
+//                   ? "Compare keyword positions week by week"
+//                   : view === "alerts"
+//                     ? "Unresolved alerts across all articles"
+//                     : "Manage which keywords you're tracking per URL"}
+//           </p>
+//         </div>
+
+//         {view === "dashboard" && !selectedUrl && (
+//           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+//             <SummaryCards />
+//             <div
+//               style={{
+//                 display: "grid",
+//                 gridTemplateColumns: "1fr 1fr",
+//                 gap: 16,
+//               }}
+//             >
+//               <div style={{ gridColumn: "1/-1" }}>
+//                 <URLListView onSelectUrl={handleSelectUrl} />
+//               </div>
+//             </div>
+//           </div>
+//         )}
+
+//         {view === "url_detail" && selectedUrl && (
+//           <URLDetailView urlId={selectedUrl} onBack={handleBack} />
+//         )}
+
+//         {view === "weekly" && (
+//           <WeeklyReportView onSelectUrl={handleSelectUrl} />
+//         )}
+//         {view === "alerts" && <AlertsView onSelectUrl={handleSelectUrl} />}
+//         {view === "keywords" && <KeywordsView />}
+//       </div>
+//     </div>
+//   );
+// }
