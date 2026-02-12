@@ -1,4 +1,4 @@
-import { prisma } from "../../../lib/db";
+import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 // GET /api/alerts — list all alerts with filters
