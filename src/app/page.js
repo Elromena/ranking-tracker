@@ -56,7 +56,7 @@ export default function Page() {
 
   const nav = [
     { id: "dashboard", l: "Dashboard", i: "◉" },
-    { id: "weekly", l: "Weekly Report", i: "◫" },
+    { id: "weekly", l: "Report", i: "◫" },
     { id: "categories", l: "All Categoies", i: "ø" },
     {
       id: "alerts",
@@ -99,7 +99,7 @@ export default function Page() {
   const titles = {
     dashboard: "Dashboard",
     url_detail: "Article Detail",
-    weekly: "Weekly Report",
+    weekly: "Report",
     alerts: "Alerts Inbox",
     config: "Settings",
     categories: "Categories",

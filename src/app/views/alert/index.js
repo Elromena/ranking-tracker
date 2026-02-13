@@ -1,9 +1,9 @@
-import Badge from "../../component/badge";
-import Loading from "../../component/loading";
-import Pill from "../..//component/pill";
+import { useEffect, useState } from "react";
 import { api } from "../../../lib/services";
 import { sevCfg, stCfg } from "../../../lib/utils";
-import { useEffect, useState } from "react";
+import Pill from "../..//component/pill";
+import Badge from "../../component/badge";
+import Loading from "../../component/loading";
 
 export default function AlertsView({ onSelectUrl }) {
   const [alerts, setAlerts] = useState([]);
@@ -91,7 +91,7 @@ export default function AlertsView({ onSelectUrl }) {
                       {a.keyword?.keyword}
                     </span>
                     <Badge color={sv.c} bg={sv.b}>
-                      {a.type}
+                      {a.type?.replaceAll("_", " ")}
                     </Badge>
                     <Badge color={st.c} bg={st.b}>
                       {st.l}

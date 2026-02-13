@@ -23,6 +23,8 @@ export default function URLDetailView({
   const [viewMode, setViewMode] = useState("daily");
   const [graphData, setGraphData] = useState();
 
+  // console.log(graphData);
+
   function buildChartData(keywords, mode = "monthly") {
     const map = {};
 
@@ -86,7 +88,7 @@ export default function URLDetailView({
     if (!data?.keywords) return;
 
     const chartData = buildChartData(data.keywords, viewMode);
-    setGraphData(chartData);
+    setGraphData(chartData.length ? chartData : null);
   }, [data, viewMode]);
 
   if (loading || !data)
@@ -347,7 +349,13 @@ export default function URLDetailView({
               Lower is better — position 1 = top of Google
             </div>
 
-            {graphData && <RankingChart chartData={graphData} />}
+            {graphData ? (
+              <RankingChart chartData={graphData} />
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-5 ">
+                No result
+              </p>
+            )}
           </div>
         </div>
       )}
