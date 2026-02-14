@@ -24,7 +24,7 @@ if (process.env.NODE_ENV !== "production") {
 const APP_URL =
   process.env.APP_URL ||
   (process.env.RAILWAY_PUBLIC_DOMAIN
-    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    ? `${process.env.RAILWAY_PUBLIC_DOMAIN}`
     : "http://localhost:3000");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
