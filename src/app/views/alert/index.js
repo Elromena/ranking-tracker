@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import Badge from "../../../component/badge";
+import Loading from "../../../component/loading";
+import Pill from "../../../component/pill";
 import { api } from "../../../lib/services";
 import { sevCfg, stCfg } from "../../../lib/utils";
-import Pill from "../..//component/pill";
-import Badge from "../../component/badge";
-import Loading from "../../component/loading";
 
 export default function AlertsView({ onSelectUrl }) {
   const [alerts, setAlerts] = useState([]);

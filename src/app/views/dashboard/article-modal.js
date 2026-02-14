@@ -1,7 +1,7 @@
-import Btn from "@/app/component/btn";
-import Input from "@/app/component/input";
-import Modal from "@/app/component/modal";
-import Select from "@/app/component/select";
+import Btn from "@/component/btn";
+import Input from "@/component/input";
+import Modal from "@/component/modal";
+import Select from "@/component/select";
 import { api } from "@/lib/services";
 import { useEffect, useState } from "react";
 

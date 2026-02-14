@@ -1,8 +1,8 @@
-import Btn from "@/app/component/btn";
-import Input from "@/app/component/input";
-import Loading from "@/app/component/loading";
-import Select from "@/app/component/select";
-import Toggle from "@/app/component/toggle";
+import Btn from "@/component/btn";
+import Input from "@/component/input";
+import Loading from "@/component/loading";
+import Select from "@/component/select";
+import Toggle from "@/component/toggle";
 import { api } from "@/lib/services";
 import { useEffect, useState } from "react";
 

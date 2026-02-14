@@ -1,6 +1,6 @@
-import Badge from "@/app/component/badge";
-import Btn from "@/app/component/btn";
-import Loading from "@/app/component/loading";
+import Badge from "@/component/badge";
+import Btn from "@/component/btn";
+import Loading from "@/component/loading";
 import { statusCfg } from "@/lib/utils";
 
 // ── Dashboard View ─────────────────────────────────────────

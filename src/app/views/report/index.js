@@ -1,6 +1,6 @@
-import Btn from "@/app/component/btn";
-import Loading from "@/app/component/loading";
-import Pill from "@/app/component/pill";
+import Btn from "@/component/btn";
+import Loading from "@/component/loading";
+import Pill from "@/component/pill";
 import { api } from "@/lib/services";
 import { useEffect, useState } from "react";
 

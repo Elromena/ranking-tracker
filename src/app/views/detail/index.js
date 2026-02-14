@@ -1,9 +1,9 @@
-import Badge from "@/app/component/badge";
-import Btn from "@/app/component/btn";
-import { DeleteIcon, EditIcon } from "@/app/component/icon";
-import Loading from "@/app/component/loading";
-import Pill from "@/app/component/pill";
 import { Loader } from "@/app/page";
+import Badge from "@/component/badge";
+import Btn from "@/component/btn";
+import { DeleteIcon, EditIcon } from "@/component/icon";
+import Loading from "@/component/loading";
+import Pill from "@/component/pill";
 import { api } from "@/lib/services";
 import { sevCfg, statusCfg, stCfg } from "@/lib/utils";
 import { useEffect, useState } from "react";
