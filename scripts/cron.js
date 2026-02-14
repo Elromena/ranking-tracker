@@ -66,7 +66,7 @@ if (!fetchFn) {
 }
 
 async function run() {
-  console.log(`[CRON] Calling ${APP_URL}/api/cron`);
+  console.log(`[CRON] Calling ${APP_URL}/api/cron`, `secret ${CRON_SECRET}`);
 
   try {
     const response = await fetchFn(`${APP_URL}/api/cron`, {
