@@ -1,7 +1,9 @@
 import Badge from "@/app/component/badge";
 import Btn from "@/app/component/btn";
+import { DeleteIcon } from "@/app/component/icon";
 import Loading from "@/app/component/loading";
 import Pill from "@/app/component/pill";
+import { Loader } from "@/app/page";
 import { api } from "@/lib/services";
 import { sevCfg, statusCfg, stCfg } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -18,6 +20,7 @@ export default function URLDetailView({
   const [tab, setTab] = useState("overview");
   const [noteText, setNoteText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState(null);
   const [viewMode, setViewMode] = useState("daily");
@@ -74,12 +77,16 @@ export default function URLDetailView({
     );
   }
 
-  useEffect(() => {
+  const fetchNotes = () => {
     setLoading(true);
     api(`/urls/${urlId}`).then((d) => {
       setData(d);
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    fetchNotes();
   }, [urlId]);
 
   // console.log(data);
@@ -130,10 +137,12 @@ export default function URLDetailView({
 
   const addNote = async () => {
     if (!noteText.trim()) return;
+    setActionLoading(true);
     await api(`/urls/${urlId}/notes`, {
       method: "POST",
       body: JSON.stringify({ text: noteText.trim() }),
     });
+    setActionLoading(false);
     setNoteText("");
     const updated = await api(`/urls/${urlId}`);
     setData(updated);
@@ -158,6 +167,17 @@ export default function URLDetailView({
       setRefreshResult({ ok: false, error: e.message });
     }
     setRefreshing(false);
+  };
+
+  const deleteNote = async (id) => {
+    if (!id) return;
+    setActionLoading(true);
+    await api(`/urls/${urlId}/notes/${id}`, {
+      method: "DELETE",
+    });
+    const updated = await api(`/urls/${urlId}`);
+    setData(updated);
+    setActionLoading(false);
   };
 
   return (
@@ -614,10 +634,15 @@ export default function URLDetailView({
                 fontFamily: "inherit",
               }}
             />
-            <Btn size="sm" onClick={addNote}>
+            <Btn size="sm" disabled={actionLoading} onClick={addNote}>
               Add Note
             </Btn>
           </div>
+          {actionLoading && (
+            <div className="w-full flex items-center justify-center">
+              <Loader />
+            </div>
+          )}
           <div style={{ position: "relative", paddingLeft: 20 }}>
             <div
               style={{
@@ -668,6 +693,7 @@ export default function URLDetailView({
                   {new Date(n.createdAt).toLocaleDateString()}
                 </div>
                 <div
+                  className="flex items-center justify-between"
                   style={{
                     fontSize: 12,
                     color: "#334155",
@@ -676,6 +702,16 @@ export default function URLDetailView({
                   }}
                 >
                   {n.text}
+
+                  <div>
+                    <button
+                      className="bg-none border-none outline-none"
+                      disabled={loading}
+                      onClick={() => deleteNote(n.id)}
+                    >
+                      <DeleteIcon />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

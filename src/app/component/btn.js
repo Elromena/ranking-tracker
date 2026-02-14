@@ -4,6 +4,7 @@ export default function Btn({
   variant = "primary",
   size = "md",
   style: sx,
+  disabled = false,
 }) {
   const base = {
     border: "none",
@@ -47,7 +48,11 @@ export default function Btn({
     },
   };
   return (
-    <button onClick={onClick} style={{ ...v[variant], ...sx }}>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{ ...v[variant], ...sx }}
+    >
       {children}
     </button>
   );

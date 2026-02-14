@@ -1,7 +1,7 @@
-import { prisma } from "@/lib/db";
-import { NextResponse } from "next/server";
 import { batchSerpPositions } from "@/lib/dataforseo";
-import { sendMessage, formatWeeklyReport } from "@/lib/telegram";
+import { prisma } from "@/lib/db";
+import { formatWeeklyReport, sendMessage } from "@/lib/telegram";
+import { NextResponse } from "next/server";
 
 // GSC is optional - only used for traffic data (clicks/impressions)
 let getSearchAnalytics, getLastWeekRange, getTopQueries;
@@ -78,12 +78,6 @@ export async function POST(request) {
     const weekStarting = new Date();
     weekStarting.setHours(0, 0, 0, 0);
 
-    // // 👇 manually change this number to simulate different days
-    // const DAY_OFFSET = -2; // 0 = today, -1 = yesterday, -2 = 2 days ago
-
-    // weekStarting.setDate(weekStarting.getDate() + DAY_OFFSET);
-
-    // Get date range for GSC (if available)
     let startDate, endDate;
     if (getLastWeekRange) {
       const range = getLastWeekRange();
