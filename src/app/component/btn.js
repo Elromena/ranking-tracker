@@ -5,6 +5,7 @@ export default function Btn({
   size = "md",
   style: sx,
   disabled = false,
+  className,
 }) {
   const base = {
     border: "none",

@@ -35,3 +35,26 @@ export const DeleteIcon = () => (
     />
   </svg>
 );
+
+export const EditIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M3 17.25V21h3.75L19.81 7.94l-3.75-3.75L3 17.25z"
+      stroke="currentColor"
+      strokeWidth="2"
+      fill="none"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M14.06 4.19l3.75 3.75"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);

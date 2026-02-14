@@ -5,8 +5,6 @@ import { NextResponse } from "next/server";
 export async function DELETE(request, { params }) {
   const noteId = parseInt(params.noteId);
 
-  console.log(noteId);
-
   if (!noteId) {
     return NextResponse.json({ error: "Invalid note id" }, { status: 400 });
   }
@@ -26,4 +24,20 @@ export async function DELETE(request, { params }) {
       { status: 404 },
     );
   }
+}
+
+export async function PATCH(request, { params }) {
+  const noteId = parseInt(params.noteId);
+  const { text } = await request.json();
+
+  if (!text) {
+    return NextResponse.json({ error: "Text required" }, { status: 400 });
+  }
+
+  const updated = await prisma.note.update({
+    where: { id: noteId },
+    data: { text },
+  });
+
+  return NextResponse.json(updated, { status: 200 });
 }

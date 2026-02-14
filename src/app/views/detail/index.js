@@ -1,6 +1,6 @@
 import Badge from "@/app/component/badge";
 import Btn from "@/app/component/btn";
-import { DeleteIcon } from "@/app/component/icon";
+import { DeleteIcon, EditIcon } from "@/app/component/icon";
 import Loading from "@/app/component/loading";
 import Pill from "@/app/component/pill";
 import { Loader } from "@/app/page";
@@ -25,6 +25,38 @@ export default function URLDetailView({
   const [refreshResult, setRefreshResult] = useState(null);
   const [viewMode, setViewMode] = useState("daily");
   const [graphData, setGraphData] = useState();
+
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (note) => {
+    setEditingId(note.id);
+    setEditingText(note.text);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingText("");
+  };
+
+  const saveEdit = async () => {
+    if (!editingText.trim()) return;
+
+    setSaving(true);
+
+    await api(`/urls/${urlId}/notes/${editingId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text: editingText }),
+    });
+
+    const updated = await api(`/urls/${urlId}`);
+    setData(updated);
+
+    setEditingId(null);
+    setEditingText("");
+    setSaving(false);
+  };
 
   // console.log(graphData);
 
@@ -693,6 +725,66 @@ export default function URLDetailView({
                   {new Date(n.createdAt).toLocaleDateString()}
                 </div>
                 <div
+                  className="flex items-start justify-between gap-3"
+                  style={{
+                    fontSize: 12,
+                    color: "#334155",
+                    marginTop: 3,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {editingId === n.id ? (
+                    <div className="flex-1">
+                      <textarea
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        className="w-full border rounded-md p-2 text-sm outline-none focus:ring-[0.4px] focus:ring-blue-500"
+                        rows={3}
+                      />
+
+                      <div className="flex gap-2 mt-2">
+                        <Btn
+                          onClick={saveEdit}
+                          disabled={saving}
+                          className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </Btn>
+
+                        <button
+                          onClick={cancelEdit}
+                          className="px-3 py-1 text-xs bg-gray-200 rounded-md hover:bg-gray-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1">{n.text}</div>
+
+                      <div className="flex items-center gap-2 opacity-60 hover:opacity-100 transition">
+                        <button
+                          disabled={loading}
+                          onClick={() => startEdit(n)}
+                          className="text-blue-600 hover:text-blue-800 text-xs"
+                        >
+                          <EditIcon />
+                        </button>
+
+                        <button
+                          disabled={loading}
+                          onClick={() => deleteNote(n.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <DeleteIcon />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* <div
                   className="flex items-center justify-between"
                   style={{
                     fontSize: 12,
@@ -712,7 +804,7 @@ export default function URLDetailView({
                       <DeleteIcon />
                     </button>
                   </div>
-                </div>
+                </div> */}
               </div>
             ))}
           </div>
