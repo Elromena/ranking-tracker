@@ -24,8 +24,6 @@ export async function POST(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  console.log("passed here");
-
   const startTime = Date.now();
   const log = [];
   const newAlerts = { critical: [], warning: [], positive: [] };
@@ -33,8 +31,6 @@ export async function POST(request) {
   try {
     // 1. Load config
     const configs = await prisma.config.findMany();
-    console.log("passed here", configs);
-
     const cfg = {};
     for (const c of configs) cfg[c.key] = c.value;
 
@@ -57,8 +53,6 @@ export async function POST(request) {
 
     log.push(`Target domain: ${targetDomain}`);
 
-    console.log("passed here", targetDomain);
-
     // 2. Get all tracked URLs with their keywords
     const urls = await prisma.trackedUrl.findMany({
       include: {
@@ -74,8 +68,6 @@ export async function POST(request) {
       },
     });
 
-    console.log("passed here", urls);
-
     log.push(
       `Found ${urls.length} URLs with ${urls.reduce((s, u) => s + u.keywords.length, 0)} active keywords`,
     );
@@ -84,7 +76,8 @@ export async function POST(request) {
     // weekStarting.setHours(0, 0, 0, 0);
 
     const weekStarting = new Date();
-    weekStarting.setHours(0, 0, 0, 0);
+    weekStarting.setUTCHours(0, 0, 0, 0); // Use UTC methods
+    // console.log(weekStarting.getUTCDate()); // Will consistently show 15th
 
     let startDate, endDate;
     if (getLastWeekRange) {
@@ -99,8 +92,6 @@ export async function POST(request) {
 
       // 3a. Pull DataForSEO positions (PRIMARY SOURCE)
       let dfsData = {};
-
-      console.log(kwStrings, "strings");
 
       try {
         dfsData = await batchSerpPositions({
@@ -331,8 +322,6 @@ export async function POST(request) {
         }
       }
     }
-
-    console.log("finished here");
 
     // 4. Send Telegram notification
     const totalAlerts =

@@ -130,6 +130,8 @@ export default function URLDetailView({
     setGraphData(chartData.length ? chartData : null);
   }, [data, viewMode]);
 
+  console.log(data);
+
   if (loading || !data)
     return (
       <>

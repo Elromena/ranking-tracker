@@ -1,9 +1,44 @@
-import { prisma } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { prisma } from "@/lib/db";
+import { NextResponse } from "next/server";
 
 // GET /api/urls/[id] — get full detail for one URL
+// export async function GET(request, { params }) {
+//   const id = parseInt(params.id);
+
+//   const url = await prisma.trackedUrl.findUnique({
+//     where: { id },
+//     include: {
+//       keywords: {
+//         include: {
+//           snapshots: {
+//             orderBy: { weekStarting: 'desc' },
+//             take: 52, // up to a year of weekly data
+//           },
+//           alerts: {
+//             orderBy: { alertDate: 'desc' },
+//           },
+//         },
+//       },
+//       notes: {
+//         orderBy: { createdAt: 'desc' },
+//       },
+//     },
+//   });
+
+//   if (!url) {
+//     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+//   }
+
+//   return NextResponse.json(url);
+// }
+
 export async function GET(request, { params }) {
   const id = parseInt(params.id);
+  const { searchParams } = new URL(request.url);
+  const period = searchParams.get("period") || "weekly";
+  const now = new Date();
+  const startDate = new Date();
+  startDate.setUTCHours(0, 0, 0, 0);
 
   const url = await prisma.trackedUrl.findUnique({
     where: { id },
@@ -11,25 +46,36 @@ export async function GET(request, { params }) {
       keywords: {
         include: {
           snapshots: {
-            orderBy: { weekStarting: 'desc' },
-            take: 52, // up to a year of weekly data
+            where: {
+              weekStarting: {
+                gte: startDate,
+              },
+            },
+            orderBy: { weekStarting: "asc" },
           },
           alerts: {
-            orderBy: { alertDate: 'desc' },
+            orderBy: { alertDate: "desc" },
           },
         },
       },
       notes: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
 
   if (!url) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(url);
+  return NextResponse.json({
+    ...url,
+    meta: {
+      period,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString(),
+    },
+  });
 }
 
 // PUT /api/urls/[id] — update URL metadata + keywords
@@ -55,7 +101,7 @@ export async function PUT(request, { params }) {
   if (keywords && Array.isArray(keywords)) {
     // Get existing keywords
     const existing = await prisma.keyword.findMany({ where: { urlId: id } });
-    const existingMap = new Map(existing.map(k => [k.keyword, k]));
+    const existingMap = new Map(existing.map((k) => [k.keyword, k]));
 
     for (const kw of keywords) {
       const kwLower = kw.keyword.toLowerCase().trim();
@@ -64,8 +110,8 @@ export async function PUT(request, { params }) {
         await prisma.keyword.update({
           where: { id: existingMap.get(kwLower).id },
           data: {
-            source: kw.source || 'manual',
-            intent: kw.intent || 'commercial',
+            source: kw.source || "manual",
+            intent: kw.intent || "commercial",
             tracked: kw.tracked !== false,
           },
         });
@@ -76,8 +122,8 @@ export async function PUT(request, { params }) {
           data: {
             urlId: id,
             keyword: kwLower,
-            source: kw.source || 'manual',
-            intent: kw.intent || 'commercial',
+            source: kw.source || "manual",
+            intent: kw.intent || "commercial",
             tracked: kw.tracked !== false,
           },
         });
@@ -89,7 +135,7 @@ export async function PUT(request, { params }) {
     const toDelete = [...existingMap.values()];
     if (toDelete.length > 0) {
       await prisma.keyword.deleteMany({
-        where: { id: { in: toDelete.map(k => k.id) } },
+        where: { id: { in: toDelete.map((k) => k.id) } },
       });
     }
   }
