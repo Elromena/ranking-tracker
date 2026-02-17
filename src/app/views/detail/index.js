@@ -7,7 +7,8 @@ import Pill from "@/component/pill";
 import { api } from "@/lib/services";
 import { sevCfg, statusCfg, stCfg } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import RankingChart from "./keywords-graph";
+import SERPRankingChart from "./graph-rep";
+import SERPDataTable from "./keywords-graph";
 
 export default function URLDetailView({
   urlId,
@@ -24,8 +25,6 @@ export default function URLDetailView({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState(null);
   const [viewMode, setViewMode] = useState("daily");
-  const [graphData, setGraphData] = useState();
-
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -50,7 +49,7 @@ export default function URLDetailView({
       body: JSON.stringify({ text: editingText }),
     });
 
-    const updated = await api(`/urls/${urlId}`);
+    const updated = await api(`/urls/${urlId}?period=${viewMode}`);
     setData(updated);
 
     setEditingId(null);
@@ -58,60 +57,9 @@ export default function URLDetailView({
     setSaving(false);
   };
 
-  // console.log(graphData);
-
-  function buildChartData(keywords, mode = "monthly") {
-    const map = {};
-
-    keywords.forEach((kw) => {
-      kw.snapshots?.forEach((snap) => {
-        const date = new Date(snap.weekStarting);
-
-        let label;
-
-        if (mode === "daily") {
-          label = date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-        }
-
-        if (mode === "weekly") {
-          const firstDayOfWeek = new Date(date);
-          firstDayOfWeek.setUTCDate(date.getUTCDate() - date.getUTCDay());
-
-          label = firstDayOfWeek.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-        }
-
-        if (mode === "monthly") {
-          label = date.toLocaleDateString("en-US", {
-            month: "short",
-            year: "numeric",
-            timeZone: "UTC",
-          });
-        }
-
-        if (!map[label]) {
-          map[label] = { month: label };
-        }
-
-        map[label][kw.keyword] = snap.serpPosition;
-      });
-    });
-
-    return Object.values(map).sort(
-      (a, b) => new Date(a.month) - new Date(b.month),
-    );
-  }
-
   const fetchNotes = () => {
     setLoading(true);
-    api(`/urls/${urlId}`).then((d) => {
+    api(`/urls/${urlId}?period=${viewMode}`).then((d) => {
       setData(d);
       setLoading(false);
     });
@@ -119,18 +67,7 @@ export default function URLDetailView({
 
   useEffect(() => {
     fetchNotes();
-  }, [urlId]);
-
-  // console.log(data);
-
-  useEffect(() => {
-    if (!data?.keywords) return;
-
-    const chartData = buildChartData(data.keywords, viewMode);
-    setGraphData(chartData.length ? chartData : null);
-  }, [data, viewMode]);
-
-  console.log(data);
+  }, [urlId, viewMode]);
 
   if (loading || !data)
     return (
@@ -363,9 +300,7 @@ export default function URLDetailView({
       </div>
 
       {tab === "overview" && (
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
-        >
+        <div>
           <div
             style={{
               background: "#fff",
@@ -390,7 +325,7 @@ export default function URLDetailView({
                   onChange={(e) => setViewMode(e.target.value)}
                   className="font-normal text-xs  capitalize "
                 >
-                  {["daily", "weekly", "monthly"].map((item) => (
+                  {["daily", "weekly"].map((item) => (
                     <option value={item}>{item}</option>
                   ))}
                 </select>
@@ -403,8 +338,8 @@ export default function URLDetailView({
               Lower is better — position 1 = top of Google
             </div>
 
-            {graphData ? (
-              <RankingChart chartData={graphData} />
+            {data ? (
+              <SERPRankingChart viewMode={viewMode} data={data} />
             ) : (
               <p className="text-sm text-gray-400 text-center py-5 ">
                 No result
@@ -414,151 +349,12 @@ export default function URLDetailView({
         </div>
       )}
 
-      {tab === "weekly" && (
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 12,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          }}
-        >
-          <table
-            style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
-          >
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                {[
-                  "Keyword",
-                  "Position",
-                  "Prev",
-                  "Change",
-                  "Clicks",
-                  "Impr",
-                  "CTR",
-                  "Features",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "10px 12px",
-                      textAlign: "left",
-                      fontWeight: 700,
-                      color: "#64748b",
-                      fontSize: 10,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                      borderBottom: "2px solid #e2e8f0",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(data.keywords || [])
-                .filter((k) => k.tracked)
-                .map((kw, i) => {
-                  const latest = kw.snapshots?.[0];
-                  if (!latest) return null;
-                  const pos = latest.serpPosition;
-                  const prev = latest.prevPosition;
-                  const chg = latest.posChange || 0;
-                  return (
-                    <tr
-                      key={i}
-                      style={{
-                        borderBottom: "1px solid #f8fafc",
-                        background: i % 2 === 0 ? "#fff" : "#fafbfc",
-                      }}
-                    >
-                      <td style={{ padding: "8px 12px", fontWeight: 600 }}>
-                        {kw.keyword}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                          fontWeight: 700,
-                          color:
-                            pos && pos <= 3
-                              ? "#059669"
-                              : pos && pos <= 10
-                                ? "#0f172a"
-                                : "#dc2626",
-                        }}
-                      >
-                        {pos ? `#${pos}` : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                          color: "#94a3b8",
-                        }}
-                      >
-                        {prev ? `#${prev}` : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                          fontWeight: 700,
-                          color:
-                            chg > 0
-                              ? "#059669"
-                              : chg < 0
-                                ? "#dc2626"
-                                : "#94a3b8",
-                        }}
-                      >
-                        {chg > 0 ? "+" : ""}
-                        {chg}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                        }}
-                      >
-                        {latest.gscClicks}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                          color: "#94a3b8",
-                        }}
-                      >
-                        {latest.gscImpressions?.toLocaleString()}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontFamily: "'JetBrains Mono',monospace",
-                        }}
-                      >
-                        {latest.gscCtr
-                          ? (latest.gscCtr * 100).toFixed(1) + "%"
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 12px",
-                          fontSize: 10,
-                          color: "#94a3b8",
-                        }}
-                      >
-                        {latest.serpFeatures || "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === "weekly" &&
+        (data ? (
+          <SERPDataTable data={data} timeRange={viewMode} />
+        ) : (
+          <p>Data Not Available</p>
+        ))}
 
       {tab === "alerts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

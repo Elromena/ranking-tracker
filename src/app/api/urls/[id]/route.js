@@ -35,10 +35,20 @@ import { NextResponse } from "next/server";
 export async function GET(request, { params }) {
   const id = parseInt(params.id);
   const { searchParams } = new URL(request.url);
-  const period = searchParams.get("period") || "weekly";
+  const period = searchParams.get("period") || "daily";
+
+  console.log(period);
+
   const now = new Date();
   const startDate = new Date();
+
+  // Reset to midnight UTC
   startDate.setUTCHours(0, 0, 0, 0);
+
+  if (period === "weekly") {
+    // Go back 6 more days (so total = last 7 days including today)
+    startDate.setUTCDate(startDate.getUTCDate() - 6);
+  }
 
   const url = await prisma.trackedUrl.findUnique({
     where: { id },
@@ -49,6 +59,7 @@ export async function GET(request, { params }) {
             where: {
               weekStarting: {
                 gte: startDate,
+                lte: now,
               },
             },
             orderBy: { weekStarting: "asc" },
