@@ -475,22 +475,6 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
           </div>
         )}
       </div>
-
-      {/* Legend/Info */}
-      <div
-        style={{
-          marginTop: 12,
-          display: "flex",
-          gap: 16,
-          fontSize: 10,
-          color: "#64748b",
-          flexWrap: "wrap",
-        }}
-      >
-        <span>🎨 Color: 🟢 Top 3 • ⚫ Top 10 • 🟠 Top 20 • 🔴 20+</span>
-        <span>📊 "rec" = records in selected period</span>
-        <span>↕️ Click headers to sort</span>
-      </div>
     </div>
   );
 };
