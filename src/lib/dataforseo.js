@@ -1,5 +1,39 @@
 const DFS_BASE = "https://api.dataforseo.com/v3";
 
+// Configuration for different providers
+const PROVIDERS = {
+  DATAFORSEO: "dataforseo",
+  SERPAPI: "serpapi",
+};
+
+// Location code mappings (keep existing DataForSEO codes)
+const LOCATION_CODES = {
+  us: 2840,
+  gb: 2826,
+  ng: 2566,
+  de: 2276,
+  ca: 2124,
+  au: 2036,
+};
+
+// SerpAPI gl parameter (country codes)
+const COUNTRY_CODES = {
+  us: "us",
+  gb: "uk",
+  ng: "ng",
+  de: "de",
+  ca: "ca",
+  au: "au",
+};
+
+// Language codes for SerpAPI
+const LANGUAGE_CODES = {
+  en: "en",
+  es: "es",
+  fr: "fr",
+  de: "de",
+};
+
 function getAuth() {
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
@@ -105,176 +139,6 @@ export async function getSerpPosition({
   }
 }
 
-/**
- * Batch check SERP positions for multiple keywords
- * More efficient than individual calls
- */
-
-export async function batchSerpPositions({
-  keywords,
-  targetDomain,
-  country = "us",
-  language = "en",
-}) {
-  const results = {};
-
-  // Create individual tasks (each will be sent separately)
-  const tasks = keywords.map((kw) => ({
-    keyword: kw,
-    location_code:
-      { us: 2840, gb: 2826, ng: 2566, de: 2276, ca: 2124, au: 2036 }[country] ||
-      2840,
-    language_code: language,
-    depth: 100,
-  }));
-
-  console.log(`Processing ${tasks.length} keywords individually`);
-
-  // Process tasks in batches with concurrency control
-  const concurrencyLimit = 5; // Adjust based on your rate limits
-  const successfulResults = [];
-
-  for (let i = 0; i < tasks.length; i += concurrencyLimit) {
-    const batch = tasks.slice(i, i + concurrencyLimit);
-    console.log(
-      `Processing batch ${Math.floor(i / concurrencyLimit) + 1}: ${batch.length} keywords`,
-    );
-
-    // Process this batch concurrently
-    const batchPromises = batch.map(async (task) => {
-      try {
-        // Send single task in array format
-        const response = await dfsRequest("/serp/google/organic/live/regular", [
-          task,
-        ]);
-
-        // Handle the response format you shared
-        if (response && response.tasks && response.tasks.length > 0) {
-          // Find the successful task (status_code: 20000)
-          const successfulTask = response.tasks.find(
-            (t) => t.status_code === 20000,
-          );
-          const failedTask = response.tasks.find(
-            (t) => t.status_code !== 20000,
-          );
-
-          if (successfulTask) {
-            return {
-              keyword: task.keyword,
-              success: true,
-              data: successfulTask,
-              error: null,
-            };
-          } else if (failedTask) {
-            return {
-              keyword: task.keyword,
-              success: false,
-              data: null,
-              error: failedTask.status_message,
-            };
-          }
-        }
-
-        return {
-          keyword: task.keyword,
-          success: false,
-          data: null,
-          error: "No valid task in response",
-        };
-      } catch (error) {
-        console.error(
-          `Error processing keyword "${task.keyword}":`,
-          error.message,
-        );
-        return {
-          keyword: task.keyword,
-          success: false,
-          data: null,
-          error: error.message,
-        };
-      }
-    });
-
-    // Wait for all promises in this batch to complete
-    const batchResults = await Promise.all(batchPromises);
-    successfulResults.push(...batchResults);
-
-    // Rate limiting - pause between batches
-    if (i + concurrencyLimit < tasks.length) {
-      console.log(`Waiting 1 second before next batch...`);
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
-
-  // Process all successful results
-  for (const { keyword, success, data, error } of successfulResults) {
-    if (!success || !data) {
-      results[keyword] = {
-        position: null,
-        serpFeatures: [],
-        foundUrl: null,
-        error: error || "Failed to fetch data",
-      };
-      continue;
-    }
-
-    const result = data.result?.[0];
-
-    if (!result) {
-      results[keyword] = {
-        position: null,
-        serpFeatures: [],
-        foundUrl: null,
-      };
-      continue;
-    }
-
-    const items = result.items || [];
-    let position = null;
-    let foundUrl = null;
-
-    for (const item of items) {
-      if (item.type === "organic" && item.domain?.includes(targetDomain)) {
-        position = item.rank_absolute;
-        foundUrl = item.url;
-        break;
-      }
-    }
-
-    const serpFeatures = [];
-    for (const item of items) {
-      if (
-        [
-          "featured_snippet",
-          "people_also_ask",
-          "local_pack",
-          "knowledge_graph",
-          "video",
-        ].includes(item.type)
-      ) {
-        serpFeatures.push(item.type === "people_also_ask" ? "paa" : item.type);
-      }
-    }
-
-    results[keyword] = {
-      position,
-      serpFeatures: [...new Set(serpFeatures)],
-      foundUrl,
-    };
-  }
-
-  // Log summary
-  const successful = Object.values(results).filter(
-    (r) => r.position !== null,
-  ).length;
-  const failed = Object.values(results).filter(
-    (r) => r.position === null,
-  ).length;
-  console.log(`Complete: ${successful} successful, ${failed} failed`);
-
-  return results;
-}
-
 // export async function batchSerpPositions({
 //   keywords,
 //   targetDomain,
@@ -283,82 +147,194 @@ export async function batchSerpPositions({
 // }) {
 //   const results = {};
 
-//   // DataForSEO supports batch — send up to 100 at once
-//   const batches = [];
-//   for (let i = 0; i < keywords.length; i += 100) {
-//     batches.push(keywords.slice(i, i + 100));
-//   }
+//   // Create individual tasks (each will be sent separately)
+//   const tasks = keywords.map((kw) => ({
+//     keyword: kw,
+//     location_code:
+//       { us: 2840, gb: 2826, ng: 2566, de: 2276, ca: 2124, au: 2036 }[country] ||
+//       2840,
+//     language_code: language,
+//     depth: 100,
+//   }));
 
-//   console.log(batches, "thiis is batches");
+//   console.log(`Processing ${tasks.length} keywords individually`);
 
-//   for (const batch of batches) {
-//     const tasks = batch.map((kw) => ({
-//       keyword: kw,
-//       location_code:
-//         { us: 2840, gb: 2826, ng: 2566, de: 2276, ca: 2124, au: 2036 }[
-//           country
-//         ] || 2840,
-//       language_code: language,
-//       depth: 100,
-//     }));
+//   // Process tasks in batches with concurrency control
+//   const concurrencyLimit = 5; // Adjust based on your rate limits
+//   const successfulResults = [];
 
-//     // console.log(tasks);
+//   for (let i = 0; i < tasks.length; i += concurrencyLimit) {
+//     const batch = tasks.slice(i, i + concurrencyLimit);
+//     console.log(
+//       `Processing batch ${Math.floor(i / concurrencyLimit) + 1}: ${batch.length} keywords`,
+//     );
 
-//     try {
-//       const data = await dfsRequest("/serp/google/organic/live/regular", tasks);
+//     // Process this batch concurrently
+//     const batchPromises = batch.map(async (task) => {
+//       try {
+//         // Send single task in array format
+//         const response = await dfsRequest("/serp/google/organic/live/regular", [
+//           task,
+//         ]);
 
-//       for (const task of data.tasks || []) {
-//         const kw = task.data?.keyword;
-//         const result = task.result?.[0];
-//         if (!kw || !result) continue;
+//         // Handle the response format you shared
+//         if (response && response.tasks && response.tasks.length > 0) {
+//           // Find the successful task (status_code: 20000)
+//           const successfulTask = response.tasks.find(
+//             (t) => t.status_code === 20000,
+//           );
+//           const failedTask = response.tasks.find(
+//             (t) => t.status_code !== 20000,
+//           );
 
-//         const items = result.items || [];
-//         let position = null;
-//         let foundUrl = null;
-
-//         for (const item of items) {
-//           if (item.type === "organic" && item.domain?.includes(targetDomain)) {
-//             position = item.rank_absolute;
-//             foundUrl = item.url;
-//             break;
+//           if (successfulTask) {
+//             return {
+//               keyword: task.keyword,
+//               success: true,
+//               data: successfulTask,
+//               error: null,
+//             };
+//           } else if (failedTask) {
+//             return {
+//               keyword: task.keyword,
+//               success: false,
+//               data: null,
+//               error: failedTask.status_message,
+//             };
 //           }
 //         }
 
-//         const serpFeatures = [];
-//         for (const item of items) {
-//           if (
-//             [
-//               "featured_snippet",
-//               "people_also_ask",
-//               "local_pack",
-//               "knowledge_graph",
-//               "video",
-//             ].includes(item.type)
-//           ) {
-//             serpFeatures.push(
-//               item.type === "people_also_ask" ? "paa" : item.type,
-//             );
-//           }
-//         }
-
-//         results[kw] = {
-//           position,
-//           serpFeatures: [...new Set(serpFeatures)],
-//           foundUrl,
+//         return {
+//           keyword: task.keyword,
+//           success: false,
+//           data: null,
+//           error: "No valid task in response",
+//         };
+//       } catch (error) {
+//         console.error(
+//           `Error processing keyword "${task.keyword}":`,
+//           error.message,
+//         );
+//         return {
+//           keyword: task.keyword,
+//           success: false,
+//           data: null,
+//           error: error.message,
 //         };
 //       }
-//     } catch (error) {
-//       console.error("DataForSEO batch error:", error.message);
-//     }
+//     });
 
-//     // Rate limiting — pause between batches
-//     if (batches.length > 1) await new Promise((r) => setTimeout(r, 2000));
+//     // Wait for all promises in this batch to complete
+//     const batchResults = await Promise.all(batchPromises);
+//     successfulResults.push(...batchResults);
+
+//     // Rate limiting - pause between batches
+//     if (i + concurrencyLimit < tasks.length) {
+//       console.log(`Waiting 1 second before next batch...`);
+//       await new Promise((r) => setTimeout(r, 1000));
+//     }
 //   }
 
-//   console.log(results);
+//   // Process all successful results
+//   for (const { keyword, success, data, error } of successfulResults) {
+//     if (!success || !data) {
+//       results[keyword] = {
+//         position: null,
+//         serpFeatures: [],
+//         foundUrl: null,
+//         error: error || "Failed to fetch data",
+//       };
+//       continue;
+//     }
+
+//     const result = data.result?.[0];
+
+//     if (!result) {
+//       results[keyword] = {
+//         position: null,
+//         serpFeatures: [],
+//         foundUrl: null,
+//       };
+//       continue;
+//     }
+
+//     const items = result.items || [];
+//     let position = null;
+//     let foundUrl = null;
+
+//     for (const item of items) {
+//       if (item.type === "organic" && item.domain?.includes(targetDomain)) {
+//         position = item.rank_absolute;
+//         foundUrl = item.url;
+//         break;
+//       }
+//     }
+
+//     const serpFeatures = [];
+//     for (const item of items) {
+//       if (
+//         [
+//           "featured_snippet",
+//           "people_also_ask",
+//           "local_pack",
+//           "knowledge_graph",
+//           "video",
+//         ].includes(item.type)
+//       ) {
+//         serpFeatures.push(item.type === "people_also_ask" ? "paa" : item.type);
+//       }
+//     }
+
+//     results[keyword] = {
+//       position,
+//       serpFeatures: [...new Set(serpFeatures)],
+//       foundUrl,
+//     };
+//   }
+
+//   // Log summary
+//   const successful = Object.values(results).filter(
+//     (r) => r.position !== null,
+//   ).length;
+//   const failed = Object.values(results).filter(
+//     (r) => r.position === null,
+//   ).length;
+//   console.log(`Complete: ${successful} successful, ${failed} failed`);
 
 //   return results;
 // }
+
+export async function batchSerpPositions({
+  keywords,
+  targetDomain,
+  country = "us",
+  language = "en",
+  provider = PROVIDERS.DATAFORSEO, // Default to DataForSEO
+  serpApiKey = process.env.SERPAPI_KEY, // Optional, falls back to env
+}) {
+  const results = {};
+
+  console.log(`Processing ${keywords.length} keywords using ${provider}`);
+
+  if (provider === PROVIDERS.DATAFORSEO) {
+    return await processWithDataForSEO({
+      keywords,
+      targetDomain,
+      country,
+      language,
+    });
+  } else if (provider === PROVIDERS.SERPAPI) {
+    return await processWithSerpAPI({
+      keywords,
+      targetDomain,
+      country,
+      language,
+      serpApiKey,
+    });
+  } else {
+    throw new Error(`Unknown provider: ${provider}`);
+  }
+}
 
 /**
  * Get historical SERP positions for keywords on a specific date
@@ -463,3 +439,309 @@ export async function getHistoricalSerpPositions({
 
   return results;
 }
+
+async function processWithDataForSEO({
+  keywords,
+  targetDomain,
+  country,
+  language,
+}) {
+  const results = {};
+
+  // Create individual tasks
+  const tasks = keywords.map((kw) => ({
+    keyword: kw,
+    location_code: LOCATION_CODES[country] || 2840,
+    language_code: language,
+    depth: 100,
+  }));
+
+  // Process tasks in batches with concurrency control
+  const concurrencyLimit = 5;
+  const successfulResults = [];
+
+  for (let i = 0; i < tasks.length; i += concurrencyLimit) {
+    const batch = tasks.slice(i, i + concurrencyLimit);
+    console.log(
+      `Processing DataForSEO batch ${Math.floor(i / concurrencyLimit) + 1}: ${batch.length} keywords`,
+    );
+
+    const batchPromises = batch.map(async (task) => {
+      try {
+        const response = await dfsRequest("/serp/google/organic/live/regular", [
+          task,
+        ]);
+
+        if (response && response.tasks && response.tasks.length > 0) {
+          const successfulTask = response.tasks.find(
+            (t) => t.status_code === 20000,
+          );
+          const failedTask = response.tasks.find(
+            (t) => t.status_code !== 20000,
+          );
+
+          if (successfulTask) {
+            return {
+              keyword: task.keyword,
+              success: true,
+              data: successfulTask,
+              error: null,
+            };
+          } else if (failedTask) {
+            return {
+              keyword: task.keyword,
+              success: false,
+              data: null,
+              error: failedTask.status_message,
+            };
+          }
+        }
+
+        return {
+          keyword: task.keyword,
+          success: false,
+          data: null,
+          error: "No valid task in response",
+        };
+      } catch (error) {
+        console.error(
+          `Error processing keyword "${task.keyword}":`,
+          error.message,
+        );
+        return {
+          keyword: task.keyword,
+          success: false,
+          data: null,
+          error: error.message,
+        };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    successfulResults.push(...batchResults);
+
+    if (i + concurrencyLimit < tasks.length) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  // Process DataForSEO results into consistent format
+  for (const { keyword, success, data, error } of successfulResults) {
+    if (!success || !data) {
+      results[keyword] = {
+        position: null,
+        serpFeatures: [],
+        foundUrl: null,
+        error: error || "Failed to fetch data",
+      };
+      continue;
+    }
+
+    const result = data.result?.[0];
+
+    if (!result) {
+      results[keyword] = {
+        position: null,
+        serpFeatures: [],
+        foundUrl: null,
+      };
+      continue;
+    }
+
+    const items = result.items || [];
+    let position = null;
+    let foundUrl = null;
+
+    for (const item of items) {
+      if (item.type === "organic" && item.domain?.includes(targetDomain)) {
+        position = item.rank_absolute;
+        foundUrl = item.url;
+        break;
+      }
+    }
+
+    const serpFeatures = [];
+    for (const item of items) {
+      if (
+        [
+          "featured_snippet",
+          "people_also_ask",
+          "local_pack",
+          "knowledge_graph",
+          "video",
+        ].includes(item.type)
+      ) {
+        serpFeatures.push(item.type === "people_also_ask" ? "paa" : item.type);
+      }
+    }
+
+    results[keyword] = {
+      position,
+      serpFeatures: [...new Set(serpFeatures)],
+      foundUrl,
+    };
+  }
+
+  const successful = Object.values(results).filter(
+    (r) => r.position !== null,
+  ).length;
+  const failed = Object.values(results).filter(
+    (r) => r.position === null,
+  ).length;
+  console.log(
+    `DataForSEO Complete: ${successful} successful, ${failed} failed`,
+  );
+
+  return results;
+}
+
+/**
+ * Process keywords using SerpAPI
+ */
+async function processWithSerpAPI({
+  keywords,
+  targetDomain,
+  country,
+  language,
+  serpApiKey,
+}) {
+  const results = {};
+  const apiKey = serpApiKey || process.env.SERP_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "SerpAPI key is required. Set SERPAPI_KEY environment variable or pass serpApiKey parameter.",
+    );
+  }
+
+  // Process tasks in batches with concurrency control
+  const concurrencyLimit = 5; // SerpAPI rate limits
+  const successfulResults = [];
+
+  for (let i = 0; i < keywords.length; i += concurrencyLimit) {
+    const batch = keywords.slice(i, i + concurrencyLimit);
+    console.log(
+      `Processing SerpAPI batch ${Math.floor(i / concurrencyLimit) + 1}: ${batch.length} keywords`,
+    );
+
+    const batchPromises = batch.map(async (keyword) => {
+      try {
+        // Use Promise-based approach instead of callback
+        const response = await serpApiSearch({
+          api_key: apiKey,
+          q: keyword,
+          hl: language,
+          gl: COUNTRY_CODES[country] || "us",
+        });
+
+        console.log(keyword, response, "response obj");
+
+        return {
+          keyword,
+          success: true,
+          data: response,
+          error: null,
+        };
+      } catch (error) {
+        console.error(`Error processing keyword "${keyword}":`, error.message);
+        return {
+          keyword,
+          success: false,
+          data: null,
+          error: error.message,
+        };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    successfulResults.push(...batchResults);
+
+    // Rate limiting - pause between batches
+    if (i + concurrencyLimit < keywords.length) {
+      console.log(`Waiting 1 second before next SerpAPI batch...`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  // Process SerpAPI results into consistent format
+  for (const { keyword, success, data, error } of successfulResults) {
+    if (!success || !data) {
+      results[keyword] = {
+        position: null,
+        serpFeatures: [],
+        foundUrl: null,
+        error: error || "Failed to fetch data",
+      };
+      continue;
+    }
+
+    const organicResults = data?.organic_results || [];
+    let position = null;
+    let foundUrl = null;
+
+    console.log("organic result", organicResults?.length);
+
+    // Find target domain in organic results
+    for (const item of organicResults) {
+      if (
+        item.link?.includes(targetDomain) ||
+        item.displayed_link?.includes(targetDomain)
+      ) {
+        position = item.position;
+        foundUrl = item.link;
+        break;
+      }
+    }
+
+    // Detect SERP features from response
+    const serpFeatures = [];
+
+    // Check for various SERP features in SerpAPI response
+    if (data.answer_box) serpFeatures.push("featured_snippet");
+    if (data.related_questions) serpFeatures.push("paa"); // people also ask
+    if (data.local_results) serpFeatures.push("local_pack");
+    if (data.knowledge_graph) serpFeatures.push("knowledge_graph");
+    if (data.inline_videos) serpFeatures.push("video");
+    if (data.top_stories) serpFeatures.push("top_stories");
+    if (data.shopping_results) serpFeatures.push("shopping");
+    if (data.related_searches) serpFeatures.push("related_searches");
+    if (data.paid_ad_results?.length > 0) serpFeatures.push("ads");
+
+    results[keyword] = {
+      position,
+      serpFeatures: [...new Set(serpFeatures)],
+      foundUrl,
+    };
+  }
+
+  const successful = Object.values(results).filter(
+    (r) => r.position !== null,
+  ).length;
+  const failed = Object.values(results).filter(
+    (r) => r.position === null,
+  ).length;
+  console.log(`SerpAPI Complete: ${successful} successful, ${failed} failed`);
+
+  return results;
+}
+
+/**
+ * Wrapper for SerpAPI getJson to return a Promise
+ */
+function serpApiSearch(params) {
+  return new Promise((resolve, reject) => {
+    const { getJson } = require("serpapi");
+
+    getJson(params, (json) => {
+      // Check for errors in response
+      if (json.error) {
+        reject(new Error(json.error));
+      } else {
+        resolve(json);
+      }
+    });
+  });
+}
+
+// Export provider constants for external use
+export { PROVIDERS };

@@ -36,8 +36,9 @@ export async function GET(request, { params }) {
   const id = parseInt(params.id);
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period") || "daily";
+  const days = parseInt(searchParams.get("days")) || 7; // Default to 7 days
 
-  console.log(period);
+  console.log(period, "days:", days);
 
   const now = new Date();
   const startDate = new Date();
@@ -46,8 +47,11 @@ export async function GET(request, { params }) {
   startDate.setUTCHours(0, 0, 0, 0);
 
   if (period === "weekly") {
-    // Go back 6 more days (so total = last 7 days including today)
-    startDate.setUTCDate(startDate.getUTCDate() - 6);
+    // Go back ~8 weeks
+    startDate.setUTCDate(startDate.getUTCDate() - 56);
+  } else {
+    // Go back `days` amount
+    startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
   }
 
   const url = await prisma.trackedUrl.findUnique({

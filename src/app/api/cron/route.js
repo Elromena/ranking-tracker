@@ -1,4 +1,4 @@
-import { batchSerpPositions } from "@/lib/dataforseo";
+import { batchSerpPositions, PROVIDERS } from "@/lib/dataforseo";
 import { prisma } from "@/lib/db";
 import { formatWeeklyReport, sendMessage } from "@/lib/telegram";
 import { NextResponse } from "next/server";
@@ -99,6 +99,7 @@ export async function POST(request) {
           targetDomain,
           country,
           language,
+          provider: PROVIDERS.DATAFORSEO,
         });
         console.log(dfsData, url.title);
 

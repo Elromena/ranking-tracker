@@ -25,6 +25,12 @@ export default function URLDetailView({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState(null);
   const [viewMode, setViewMode] = useState("daily");
+  const [dateRange, setDateRange] = useState(7); // default 7 days 
+  const [chartMetrics, setChartMetrics] = useState({
+    total: false,
+    byPlatform: false,
+    byCategory: false,
+  });
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -49,7 +55,7 @@ export default function URLDetailView({
       body: JSON.stringify({ text: editingText }),
     });
 
-    const updated = await api(`/urls/${urlId}?period=${viewMode}`);
+    const updated = await api(`/urls/${urlId}?period=${viewMode}&days=${dateRange}`);
     setData(updated);
 
     setEditingId(null);
@@ -59,7 +65,7 @@ export default function URLDetailView({
 
   const fetchNotes = () => {
     setLoading(true);
-    api(`/urls/${urlId}?period=${viewMode}`).then((d) => {
+    api(`/urls/${urlId}?period=${viewMode}&days=${dateRange}`).then((d) => {
       setData(d);
       setLoading(false);
     });
@@ -67,7 +73,7 @@ export default function URLDetailView({
 
   useEffect(() => {
     fetchNotes();
-  }, [urlId, viewMode]);
+  }, [urlId, viewMode, dateRange]);
 
   if (loading || !data)
     return (
@@ -319,17 +325,6 @@ export default function URLDetailView({
               }}
             >
               Position Trends
-              <div className="shadow-sm border rounded-md p-1">
-                <select
-                  value={viewMode}
-                  onChange={(e) => setViewMode(e.target.value)}
-                  className="font-normal text-xs  capitalize "
-                >
-                  {["daily", "weekly"].map((item) => (
-                    <option value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
             </div>
             <div
               className="relative -top-3"
@@ -339,7 +334,15 @@ export default function URLDetailView({
             </div>
 
             {data ? (
-              <SERPRankingChart viewMode={viewMode} data={data} />
+              <SERPRankingChart
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                dateRange={dateRange}
+                setDateRange={setDateRange}
+                chartMetrics={chartMetrics}
+                setChartMetrics={setChartMetrics}
+                data={data}
+              />
             ) : (
               <p className="text-sm text-gray-400 text-center py-5 ">
                 No result

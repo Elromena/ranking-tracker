@@ -1,4 +1,4 @@
-import { format, parseISO, subDays, subMonths, subWeeks } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import { useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -11,8 +11,23 @@ import {
   YAxis,
 } from "recharts";
 
-const SERPRankingChart = ({ data, viewMode }) => {
+const SERPRankingChart = ({
+  data,
+  viewMode,
+  setViewMode,
+  dateRange,
+  setDateRange,
+  chartMetrics,
+  setChartMetrics,
+}) => {
   const [selectedKeywords, setSelectedKeywords] = useState([]);
+
+  // const toggleChartMetric = (metric) => {
+  //   setChartMetrics((prev) => ({
+  //     ...prev,
+  //     [metric]: !prev[metric],
+  //   }));
+  // };
 
   // Process the data to create time-series format
   const processedData = useMemo(() => {
@@ -23,9 +38,10 @@ const SERPRankingChart = ({ data, viewMode }) => {
         keywordId: keyword.id,
         keywordName: keyword.keyword,
         position: snapshot.serpPosition || 100,
+        clicks: snapshot.gscClicks || 0,
         prevPosition: snapshot.prevPosition,
         posChange: snapshot.posChange,
-      })),
+      }))
     );
 
     // Group by date and keyword
@@ -34,7 +50,13 @@ const SERPRankingChart = ({ data, viewMode }) => {
       if (!groupedByDate[snapshot.date]) {
         groupedByDate[snapshot.date] = {};
       }
-      groupedByDate[snapshot.date][snapshot.keywordName] = snapshot.position;
+      
+      // If "Total Clicks" is checked, we plot clicks. Otherwise, position.
+      if (chartMetrics.total) {
+        groupedByDate[snapshot.date][snapshot.keywordName] = snapshot.clicks;
+      } else {
+        groupedByDate[snapshot.date][snapshot.keywordName] = snapshot.position;
+      }
     });
 
     // Convert to array format for Recharts with better date formatting
@@ -50,25 +72,28 @@ const SERPRankingChart = ({ data, viewMode }) => {
     const now = new Date();
     let cutoffDate;
 
-    switch (viewMode) {
-      case "daily":
-        cutoffDate = subDays(now, 1);
-        break;
-      case "weekly":
-        cutoffDate = subWeeks(now, 1);
-        break;
-      case "monthly":
-        cutoffDate = subMonths(now, 1);
-        break;
-      default:
-        cutoffDate = subDays(now, 1);
+    // Use current settings state (backend now handles primary filtering,
+    // but keep this for any client-side refinements if needed)
+    if (viewMode === "weekly") {
+      cutoffDate = subDays(now, 56); // 8 weeks back
+    } else {
+      cutoffDate = subDays(now, dateRange);
     }
 
     return chartData.filter((item) => parseISO(item.fullDate) >= cutoffDate);
-  }, [data, viewMode]);
+  }, [data, viewMode, dateRange, chartMetrics]);
+
+   const shouldShowTick = (_, index, data) => {
+    // Show first, last, and every 3rd date in between
+    if (index === 0 || index === data.length - 1) return true;
+    if (index % 3 === 0) return true;
+    return false;
+  };
+
+  
 
   // Get unique colors for lines
-  const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#ff0000"];
+  const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#ff0000", "#10b981", "#3b82f6", "#8b5cf6"];
 
   // Handle keyword selection
   const toggleKeyword = (keyword) => {
@@ -89,7 +114,9 @@ const SERPRankingChart = ({ data, viewMode }) => {
             <p key={index} style={{ color: entry.color }} className="text-xs">
               {entry.name}:{" "}
               <span className="font-bold">
-                {entry.value === 100 ? "Not ranked" : `#${entry.value}`}
+                {chartMetrics.total 
+                  ? entry.value 
+                  : (entry.value === 100 ? "Not ranked" : `#${entry.value}`)}
               </span>
             </p>
           ))}
@@ -101,6 +128,83 @@ const SERPRankingChart = ({ data, viewMode }) => {
 
   return (
     <div className="w-full p-4">
+      <div className="chart-header flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <h2 className="text-lg font-bold">Performance</h2>
+        
+        <div className="chart-controls flex flex-wrap items-center gap-4 text-sm">
+          <div className="view-type-buttons flex items-center bg-gray-100 rounded-md p-1">
+            {/* <button
+              className={`px-3 py-1 rounded-md text-xs transition-colors ${
+                viewMode === "daily" ? "bg-white shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setViewMode("daily")}
+            >
+              Daily
+            </button> */}
+            {/* <button
+               className={`px-3 py-1 rounded-md text-xs transition-colors ${
+                viewMode === "weekly" ? "bg-white shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setViewMode("weekly")}
+            >
+              Weekly
+            </button> */}
+          </div>
+
+          {viewMode === "daily" ? (
+            <div className="date-range-buttons flex items-center gap-1">
+              {[7, 30, 60, 90].map((days) => (
+                <button
+                  key={days}
+                   className={`px-2 py-1 rounded-md text-xs transition-colors border ${
+                    dateRange === days 
+                      ? "bg-blue-50 border-blue-200 text-blue-700 font-medium" 
+                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                  onClick={() => setDateRange(days)}
+                >
+                  {days}d
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="weekly-note">
+              <span className="text-xs text-slate-500">Last 8 weeks</span>
+            </div>
+          )}
+
+          {/* <div className="chart-metrics flex items-center gap-3 border-l pl-4 border-gray-200">
+            <label className="checkbox-label flex items-center gap-1.5 cursor-pointer text-xs text-gray-700">
+              <input
+                type="checkbox"
+                checked={chartMetrics.total}
+                onChange={() => toggleChartMetric("total")}
+                className="rounded text-blue-600 focus:ring-blue-500 h-3 w-3"
+              />
+              Total Clicks
+            </label>
+            <label className="checkbox-label flex items-center gap-1.5 cursor-pointer text-xs text-gray-700 opacity-60 tooltip-container" title="Data currently unavailable">
+              <input
+                type="checkbox"
+                checked={chartMetrics.byPlatform}
+                onChange={() => toggleChartMetric("byPlatform")}
+                className="rounded text-blue-600 focus:ring-blue-500 h-3 w-3"
+              />
+              By Platform
+            </label>
+            <label className="checkbox-label flex items-center gap-1.5 cursor-pointer text-xs text-gray-700 opacity-60 tooltip-container" title="Data currently unavailable">
+              <input
+                type="checkbox"
+                checked={chartMetrics.byCategory}
+                onChange={() => toggleChartMetric("byCategory")}
+                className="rounded text-blue-600 focus:ring-blue-500 h-3 w-3"
+              />
+              By Category
+            </label>
+          </div> */}
+        </div>
+      </div>
+
       {/* Controls with smaller font */}
       <div className="mb-6 flex flex-wrap gap-4 items-center text-sm">
         {/* Keyword selector with smaller font */}
@@ -145,20 +249,22 @@ const SERPRankingChart = ({ data, viewMode }) => {
                 fontSize: 11,
               }}
               tick={{ fontSize: 10 }}
-              tickFormatter={(value) => value}
-            />
+ tickFormatter={(value, index) => {
+            // Return the date only for specific indices
+            return shouldShowTick(value, index, data) ? value : "";
+          }}            />
             <YAxis
-              reversed
-              domain={[1, 100]}
+              reversed={!chartMetrics.total} // Reverse only if showing position
+              domain={chartMetrics.total ? [0, "auto"] : [1, 100]}
               label={{
-                value: "Position",
+                value: chartMetrics.total ? "Clicks" : "Position",
                 angle: -90,
                 position: "insideLeft",
                 fontSize: 11,
                 offset: -5,
               }}
               tick={{ fontSize: 10 }}
-              tickFormatter={(value) => (value === 100 ? "NR" : value)}
+              tickFormatter={(value) => (!chartMetrics.total && value === 100 ? "NR" : value)}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend
@@ -179,7 +285,7 @@ const SERPRankingChart = ({ data, viewMode }) => {
                   activeDot={{ r: 5 }}
                   connectNulls={false}
                 />
-              ) : null,
+              ) : null
             )}
           </LineChart>
         </ResponsiveContainer>

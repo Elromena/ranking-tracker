@@ -20,7 +20,8 @@
     "node-cron": "^3.0.3",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "recharts": "^2.12.0"
+    "recharts": "^2.12.0",
+    "serpapi": "^2.2.1"
   },
   "devDependencies": {
     "@types/node": "25.2.3",
