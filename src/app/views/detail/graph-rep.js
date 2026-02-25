@@ -21,6 +21,7 @@ const SERPRankingChart = ({
   setChartMetrics,
 }) => {
   const [selectedKeywords, setSelectedKeywords] = useState([]);
+  const [activeNote, setActiveNote] = useState(null);
 
   // const toggleChartMetric = (metric) => {
   //   setChartMetrics((prev) => ({
@@ -31,42 +32,56 @@ const SERPRankingChart = ({
 
   // Process the data to create time-series format
   const processedData = useMemo(() => {
-    // Get all unique dates from all snapshots
-    const allSnapshots = data.keywords.flatMap((keyword) =>
-      keyword.snapshots.map((snapshot) => ({
-        date: snapshot.weekStarting,
-        keywordId: keyword.id,
-        keywordName: keyword.keyword,
-        position: snapshot.serpPosition || 100,
-        clicks: snapshot.gscClicks || 0,
-        prevPosition: snapshot.prevPosition,
-        posChange: snapshot.posChange,
-      }))
-    );
-
     // Group by date and keyword
     const groupedByDate = {};
-    allSnapshots.forEach((snapshot) => {
-      if (!groupedByDate[snapshot.date]) {
-        groupedByDate[snapshot.date] = {};
-      }
-      
-      // If "Total Clicks" is checked, we plot clicks. Otherwise, position.
-      if (chartMetrics.total) {
-        groupedByDate[snapshot.date][snapshot.keywordName] = snapshot.clicks;
-      } else {
-        groupedByDate[snapshot.date][snapshot.keywordName] = snapshot.position;
-      }
+    
+    // First, map all snapshots
+    data.keywords.forEach((keyword) => {
+      keyword.snapshots.forEach((snapshot) => {
+        const dateStr = snapshot.weekStarting.split("T")[0]; // e.g., "2026-02-23"
+        
+        if (!groupedByDate[dateStr]) {
+          groupedByDate[dateStr] = {};
+        }
+        
+        if (chartMetrics.total) {
+          groupedByDate[dateStr][keyword.keyword] = snapshot.gscClicks || 0;
+        } else {
+          groupedByDate[dateStr][keyword.keyword] = snapshot.serpPosition || 100;
+        }
+      });
     });
+
+    // Then, map all notes
+    if (data.notes && data.notes.length > 0) {
+      data.notes.forEach(note => {
+        if (!note.createdAt) return;
+        const dateStr = note.createdAt.split("T")[0];
+        
+        if (!groupedByDate[dateStr]) {
+          groupedByDate[dateStr] = {};
+        }
+        
+        if (!groupedByDate[dateStr].notes) {
+          groupedByDate[dateStr].notes = [];
+        }
+        groupedByDate[dateStr].notes.push(note);
+        groupedByDate[dateStr].notePos = 0.05;
+      });
+    }
 
     // Convert to array format for Recharts with better date formatting
     const chartData = Object.keys(groupedByDate)
       .sort()
-      .map((date) => ({
-        date: format(parseISO(date), "d MMM"), // This gives "2 Feb" format
-        fullDate: date,
-        ...groupedByDate[date],
-      }));
+      .map((dateStr) => {
+        const fullDate = `${dateStr}T00:00:00Z`;
+        return {
+          date: format(parseISO(fullDate), "d MMM"), // This gives "2 Feb" format
+          fullDate,
+          notes: groupedByDate[dateStr].notes || null,
+          ...groupedByDate[dateStr],
+        };
+      });
 
     // Filter based on time range
     const now = new Date();
@@ -107,16 +122,24 @@ const SERPRankingChart = ({
   // Custom tooltip with smaller font
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      const filteredPayload = payload.filter(
+        (entry) => entry.dataKey !== "notePos"
+      );
+
+      if (filteredPayload.length === 0) return null;
+
       return (
-        <div className="bg-white p-2 border border-gray-200 rounded shadow-lg text-xs">
+        <div className="bg-white p-2 border border-gray-200 rounded shadow-lg text-xs max-w-xs pointer-events-none">
           <p className="font-bold mb-1 text-xs">{label}</p>
-          {payload.map((entry, index) => (
+          {filteredPayload.map((entry, index) => (
             <p key={index} style={{ color: entry.color }} className="text-xs">
               {entry.name}:{" "}
               <span className="font-bold">
-                {chartMetrics.total 
-                  ? entry.value 
-                  : (entry.value === 100 ? "Not ranked" : `#${entry.value}`)}
+                {chartMetrics.total
+                  ? entry.value
+                  : entry.value === 100
+                  ? "Not ranked"
+                  : `#${entry.value}`}
               </span>
             </p>
           ))}
@@ -124,6 +147,32 @@ const SERPRankingChart = ({
       );
     }
     return null;
+  };
+
+  const renderCustomNoteDot = (props) => {
+    const { cx, cy, payload } = props;
+    if (!payload.notes || payload.notes.length === 0) return null;
+    return (
+      <circle
+        key={`note-dot-${payload.date}`}
+        cx={cx}
+        cy={cy}
+        r={6}
+        fill="#f59e0b"
+        stroke="#fff"
+        strokeWidth={2}
+        onMouseEnter={() =>
+          setActiveNote({
+            x: cx,
+            y: cy,
+            notes: payload.notes,
+            date: payload.date,
+          })
+        }
+        onMouseLeave={() => setActiveNote(null)}
+        style={{ cursor: "pointer", pointerEvents: "all" }}
+      />
+    );
   };
 
   return (
@@ -233,11 +282,12 @@ const SERPRankingChart = ({
       </div>
 
       {/* Chart with smaller fonts */}
-      <div className="w-full h-96">
+      <div className="w-full h-96 relative">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={processedData}
             margin={{ top: 5, right: 30, left: 25, bottom: 25 }}
+            onMouseLeave={() => setActiveNote(null)}
           >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
@@ -266,6 +316,7 @@ const SERPRankingChart = ({
               tick={{ fontSize: 10 }}
               tickFormatter={(value) => (!chartMetrics.total && value === 100 ? "NR" : value)}
             />
+            <YAxis yAxisId="notes" domain={[0, 1]} hide={true} />
             <Tooltip content={<CustomTooltip />} />
             <Legend
               wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
@@ -287,8 +338,48 @@ const SERPRankingChart = ({
                 />
               ) : null
             )}
+
+            <Line
+              yAxisId="notes"
+              type="monotone"
+              dataKey="notePos"
+              stroke="none"
+              activeDot={false}
+              isAnimationActive={false}
+              dot={renderCustomNoteDot}
+            />
           </LineChart>
         </ResponsiveContainer>
+
+        {activeNote && (
+          <div
+            className="absolute z-10 bg-white p-3 border border-yellow-200 rounded shadow-lg text-xs max-w-sm pointer-events-none"
+            style={{
+              left: activeNote.x,
+              top: activeNote.y,
+              transform: "translate(-50%, -100%)",
+              marginTop: "-12px",
+            }}
+          >
+            <div className="font-bold text-yellow-600 mb-2 flex items-center gap-1 border-b border-yellow-100 pb-1">
+              <span className="h-2 w-2 rounded-full bg-yellow-500 inline-block"></span>
+              Notes for {activeNote.date}
+            </div>
+            {activeNote.notes.map((note, idx) => (
+              <div key={idx} className="mb-1 text-gray-700 whitespace-pre-wrap">
+                {note.text}
+              </div>
+            ))}
+            <div
+              className="absolute w-3 h-3 bg-white border-b border-r border-yellow-200"
+              style={{
+                bottom: "-7px",
+                left: "50%",
+                transform: "translateX(-50%) rotate(45deg)",
+              }}
+            ></div>
+          </div>
+        )}
       </div>
 
       {/* Optional: Add a note about date format */}

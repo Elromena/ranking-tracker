@@ -28,15 +28,21 @@ export async function DELETE(request, { params }) {
 
 export async function PATCH(request, { params }) {
   const noteId = parseInt(params.noteId);
-  const { text } = await request.json();
+  const { text, createdAt } = await request.json();
 
   if (!text) {
     return NextResponse.json({ error: "Text required" }, { status: 400 });
   }
 
+  const data = { text };
+  
+  if (createdAt) {
+    data.createdAt = new Date(createdAt);
+  }
+
   const updated = await prisma.note.update({
     where: { id: noteId },
-    data: { text },
+    data,
   });
 
   return NextResponse.json(updated, { status: 200 });

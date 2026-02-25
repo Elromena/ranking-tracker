@@ -26,6 +26,11 @@ export default function URLDetailView({
   const [refreshResult, setRefreshResult] = useState(null);
   const [viewMode, setViewMode] = useState("daily");
   const [dateRange, setDateRange] = useState(7); // default 7 days 
+  const [noteDate, setNoteDate] = useState(() => {
+    // Initialize to today (YYYY-MM-DD)
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
   const [chartMetrics, setChartMetrics] = useState({
     total: false,
     byPlatform: false,
@@ -33,26 +38,37 @@ export default function URLDetailView({
   });
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
+  const [editingDate, setEditingDate] = useState("");
   const [saving, setSaving] = useState(false);
 
   const startEdit = (note) => {
     setEditingId(note.id);
     setEditingText(note.text);
+    // Extract YYYY-MM-DD from createdAt
+    setEditingDate(new Date(note.createdAt).toISOString().split("T")[0]);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditingText("");
+    setEditingDate("");
   };
 
   const saveEdit = async () => {
     if (!editingText.trim()) return;
 
     setSaving(true);
+    
+    // Convert YYYY-MM-DD to ISO
+    const dt = new Date(editingDate);
+    dt.setUTCHours(12, 0, 0, 0); // set to noon to avoid timezone shift to prev day
 
     await api(`/urls/${urlId}/notes/${editingId}`, {
       method: "PATCH",
-      body: JSON.stringify({ text: editingText }),
+      body: JSON.stringify({ 
+        text: editingText,
+        createdAt: dt.toISOString() 
+      }),
     });
 
     const updated = await api(`/urls/${urlId}?period=${viewMode}&days=${dateRange}`);
@@ -60,6 +76,7 @@ export default function URLDetailView({
 
     setEditingId(null);
     setEditingText("");
+    setEditingDate("");
     setSaving(false);
   };
 
@@ -115,12 +132,25 @@ export default function URLDetailView({
   const addNote = async () => {
     if (!noteText.trim()) return;
     setActionLoading(true);
+    
+    // Convert YYYY-MM-DD back to ISO string for backend
+    const dt = new Date(noteDate);
+    dt.setUTCHours(12, 0, 0, 0); // set to noon so we don't skew to the previous day in other local times
+    
     await api(`/urls/${urlId}/notes`, {
       method: "POST",
-      body: JSON.stringify({ text: noteText.trim() }),
+      body: JSON.stringify({ 
+        text: noteText.trim(),
+        createdAt: dt.toISOString()
+      }),
     });
     setActionLoading(false);
     setNoteText("");
+    
+    // Re-initialize date to today
+    const today = new Date();
+    setNoteDate(today.toISOString().split("T")[0]);
+    
     const updated = await api(`/urls/${urlId}`);
     setData(updated);
   };
@@ -454,6 +484,19 @@ export default function URLDetailView({
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
             <input
+              type="date"
+              value={noteDate}
+              onChange={(e) => setNoteDate(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1.5px solid #e2e8f0",
+                fontSize: 13,
+                fontFamily: "inherit",
+                color: "#334155"
+              }}
+            />
+            <input
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               placeholder="Add a note..."
@@ -535,15 +578,25 @@ export default function URLDetailView({
                   }}
                 >
                   {editingId === n.id ? (
-                    <div className="flex-1">
+                    <div className="flex-1 border border-gray-200 rounded-md p-3 bg-gray-50">
+                      <div className="mb-2">
+                         <label className="text-xs font-semibold text-gray-500 mb-1 block">Date</label>
+                         <input
+                           type="date"
+                           value={editingDate}
+                           onChange={(e) => setEditingDate(e.target.value)}
+                           className="w-full max-w-[150px] border rounded-md p-1.5 text-xs outline-none focus:ring-[0.4px] focus:ring-blue-500"
+                         />
+                      </div>
+                      <label className="text-xs font-semibold text-gray-500 mb-1 block">Note</label>
                       <textarea
                         value={editingText}
                         onChange={(e) => setEditingText(e.target.value)}
-                        className="w-full border rounded-md p-2 text-sm outline-none focus:ring-[0.4px] focus:ring-blue-500"
+                        className="w-full border rounded-md p-2 text-sm outline-none focus:ring-[0.4px] focus:ring-blue-500 min-h-[80px]"
                         rows={3}
                       />
 
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2 mt-3">
                         <Btn
                           onClick={saveEdit}
                           disabled={saving}
