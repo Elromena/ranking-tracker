@@ -101,7 +101,6 @@ export async function POST(request) {
           language,
           provider: PROVIDERS.DATAFORSEO,
         });
-        console.log(dfsData, url.title);
 
         log.push(
           `✓ DataForSEO: ${url.title} — ${Object.keys(dfsData).length} keyword positions`,
@@ -112,26 +111,26 @@ export async function POST(request) {
 
       // 3b. Pull GSC data (OPTIONAL - only for traffic metrics)
       let gscData = {};
-      if (getSearchAnalytics && startDate && endDate) {
-        try {
-          const gscResults = await getSearchAnalytics({
-            url: url.url,
-            startDate,
-            endDate,
-            keywords: kwStrings,
-          });
-          for (const r of gscResults) {
-            gscData[r.keyword.toLowerCase()] = r;
-          }
-          log.push(
-            `✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`,
-          );
-        } catch (e) {
-          log.push(`⚠ GSC skipped: ${e.message}`);
-        }
-      } else {
-        log.push(`⚠ GSC not configured — traffic data unavailable`);
-      }
+      // if (getSearchAnalytics && startDate && endDate) {
+      //   try {
+      //     const gscResults = await getSearchAnalytics({
+      //       url: url.url,
+      //       startDate,
+      //       endDate,
+      //       keywords: kwStrings,
+      //     });
+      //     for (const r of gscResults) {
+      //       gscData[r.keyword.toLowerCase()] = r;
+      //     }
+      //     log.push(
+      //       `✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`,
+      //     );
+      //   } catch (e) {
+      //     log.push(`⚠ GSC skipped: ${e.message}`);
+      //   }
+      // } else {
+      //   log.push(`⚠ GSC not configured — traffic data unavailable`);
+      // }
 
       // 3c. Write snapshots and detect alerts
       for (const kw of url.keywords) {
@@ -270,42 +269,42 @@ export async function POST(request) {
       }
 
       // 3e. Auto-discover new keywords from GSC (optional feature)
-      if (autoAddGsc && getTopQueries && startDate && endDate) {
-        try {
-          const existingKws = new Set(
-            url.keywords.map((k) => k.keyword.toLowerCase()),
-          );
-          const topQueries = await getTopQueries({
-            url: url.url,
-            startDate,
-            endDate,
-            minImpressions: autoAddMinImpr,
-          });
+      // if (autoAddGsc && getTopQueries && startDate && endDate) {
+      //   try {
+      //     const existingKws = new Set(
+      //       url.keywords.map((k) => k.keyword.toLowerCase()),
+      //     );
+      //     const topQueries = await getTopQueries({
+      //       url: url.url,
+      //       startDate,
+      //       endDate,
+      //       minImpressions: autoAddMinImpr,
+      //     });
 
-          let added = 0;
-          for (const q of topQueries) {
-            if (existingKws.has(q.keyword.toLowerCase())) continue;
-            if (url.keywords.length + added >= maxKwPerUrl) break;
+      //     let added = 0;
+      //     for (const q of topQueries) {
+      //       if (existingKws.has(q.keyword.toLowerCase())) continue;
+      //       if (url.keywords.length + added >= maxKwPerUrl) break;
 
-            await prisma.keyword.create({
-              data: {
-                urlId: url.id,
-                keyword: q.keyword.toLowerCase(),
-                source: "gsc",
-                intent: "informational",
-                tracked: true,
-              },
-            });
-            added++;
-          }
-          if (added > 0)
-            log.push(`✓ Auto-added ${added} keywords for ${url.title}`);
-        } catch (e) {
-          log.push(`⚠ Auto-discovery skipped: ${e.message}`);
-        }
-      } else if (autoAddGsc) {
-        log.push(`⚠ Auto-discovery requires GSC configuration`);
-      }
+      //       await prisma.keyword.create({
+      //         data: {
+      //           urlId: url.id,
+      //           keyword: q.keyword.toLowerCase(),
+      //           source: "gsc",
+      //           intent: "informational",
+      //           tracked: true,
+      //         },
+      //       });
+      //       added++;
+      //     }
+      //     if (added > 0)
+      //       log.push(`✓ Auto-added ${added} keywords for ${url.title}`);
+      //   } catch (e) {
+      //     log.push(`⚠ Auto-discovery skipped: ${e.message}`);
+      //   }
+      // } else if (autoAddGsc) {
+      //   log.push(`⚠ Auto-discovery requires GSC configuration`);
+      // }
 
       // Update URL status based on trends
       if (url.keywords.length > 0) {
@@ -357,12 +356,14 @@ export async function POST(request) {
     const archiveCutoff = new Date();
     archiveCutoff.setDate(archiveCutoff.getDate() - archiveWeeks * 7);
 
-    const deleted = await prisma.weeklySnapshot.deleteMany({
-      where: { weekStarting: { lt: archiveCutoff } },
-    });
-    if (deleted.count > 0) {
-      log.push(`Archived: deleted ${deleted.count} old snapshots`);
-    }
+    // console.log(archiveCutoff, "cut off");
+
+    // const deleted = await prisma.weeklySnapshot.deleteMany({
+    //   where: { weekStarting: { lt: archiveCutoff } },
+    // });
+    // if (deleted.count > 0) {
+    //   log.push(`Archived: deleted ${deleted.count} old snapshots`);
+    // }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     log.push(`Done in ${duration}s`);
