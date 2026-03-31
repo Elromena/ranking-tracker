@@ -1,257 +1,189 @@
-import Badge from "@/component/badge";
-import Btn from "@/component/btn";
-import Loading from "@/component/loading";
-import { statusCfg } from "@/lib/utils";
+"use client";
 
-// ── Dashboard View ─────────────────────────────────────────
-export default function DashboardView({
-  urls,
-  alerts,
-  onSelectUrl,
-  onAddArticle,
-  loading,
-}) {
-  const totalKw = urls.reduce(
-    (s, u) =>
-      s +
-      (u.stats?.activeKeywords ||
-        u.keywords?.filter((k) => k.tracked).length ||
-        0),
-    0,
-  );
-  const crit = alerts.filter((a) => a.severity === "critical").length;
-  const warn = alerts.filter((a) => a.severity === "warning").length;
-  const pos = alerts.filter((a) => a.severity === "positive").length;
+import { useState, useMemo } from "react";
+import { Search, Plus, BarChart3, Globe, Target, AlertTriangle } from "lucide-react";
+import { stageCfg, STAGES, localeFlags } from "@/lib/utils";
+import {
+  Card, Badge, Input, Select, Button, EmptyState, Spinner,
+  LocalePill,
+} from "@/components/ui";
 
-  const cards = [
-    {
-      l: "URLs Tracked",
-      v: urls.length,
-      s: `${totalKw} keywords total`,
-      a: "#0f172a",
-    },
-    { l: "Critical Alerts", v: crit, s: "Need immediate action", a: "#dc2626" },
-    { l: "Warnings", v: warn, s: "Monitor closely", a: "#f59e0b" },
-    { l: "Positive Signals", v: pos, s: "Things going well", a: "#059669" },
+export default function DashboardView({ articles, onSelectArticle, onAddArticle, loading, onRefresh }) {
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterLocale, setFilterLocale] = useState("all");
+
+  // ── Derived data ──────────────────────────────────────────
+  const categories = useMemo(() => {
+    const cats = new Set(articles.map(a => a.category).filter(Boolean));
+    return [...cats].sort();
+  }, [articles]);
+
+  const allLocales = useMemo(() => {
+    const locs = new Set();
+    articles.forEach(a => a.locales?.forEach(l => locs.add(l.locale)));
+    return [...locs].sort();
+  }, [articles]);
+
+  const filtered = useMemo(() => {
+    return articles.filter(a => {
+      if (filterCategory !== "all" && a.category !== filterCategory) return false;
+      if (filterLocale !== "all" && !a.locales?.some(l => l.locale === filterLocale)) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!a.title.toLowerCase().includes(q) && !a.slug?.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [articles, filterCategory, filterLocale, search]);
+
+  // ── Summary metrics ───────────────────────────────────────
+  const metrics = useMemo(() => {
+    const localeSet = new Set();
+    let totalPos = 0;
+    let posCount = 0;
+    let needsAttention = 0;
+
+    articles.forEach(a => {
+      a.locales?.forEach(l => {
+        localeSet.add(l.locale);
+        if (l.avgPosition) {
+          totalPos += l.avgPosition;
+          posCount++;
+        }
+        if (l.avgPosition > 20 || l.netChange < -3) {
+          needsAttention++;
+        }
+      });
+    });
+
+    return {
+      totalArticles: articles.length,
+      activeLocales: localeSet.size,
+      avgPosition: posCount > 0 ? Math.round(totalPos / posCount) : 0,
+      needsAttention,
+    };
+  }, [articles]);
+
+  const metricCards = [
+    { label: "Total Articles", value: metrics.totalArticles, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Active Locales", value: metrics.activeLocales, icon: Globe, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Avg Position", value: metrics.avgPosition ? `#${metrics.avgPosition}` : "—", icon: Target, color: "text-violet-600", bg: "bg-violet-50" },
+    { label: "Needs Attention", value: metrics.needsAttention, icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50" },
   ];
 
-  if (loading) return <Loading />;
+  // ── Filter options ────────────────────────────────────────
+  const categoryOptions = [
+    { value: "all", label: "All Categories" },
+    ...categories.map(c => ({ value: c, label: c })),
+  ];
+
+  const localeOptions = [
+    { value: "all", label: "All Locales" },
+    ...allLocales.map(l => ({ value: l, label: localeFlags[l] || l.toUpperCase() })),
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4,1fr)",
-          gap: 14,
-        }}
-      >
-        {cards.map((c, i) => (
-          <div
-            key={i}
-            style={{
-              background: "#fff",
-              borderRadius: 12,
-              padding: "18px 22px",
-              borderLeft: `4px solid ${c.a}`,
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                color: "#94a3b8",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: 1,
-              }}
-            >
-              {c.l}
+    <div className="space-y-6">
+      {/* Summary Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {metricCards.map(m => (
+          <Card key={m.label} className="flex items-center gap-4 p-4">
+            <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${m.bg}`}>
+              <m.icon size={18} className={m.color} />
             </div>
-            <div
-              style={{
-                fontSize: 30,
-                fontWeight: 800,
-                color: c.a,
-                marginTop: 2,
-                fontFamily: "'JetBrains Mono',monospace",
-              }}
-            >
-              {c.v}
+            <div>
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{m.label}</div>
+              <div className="text-xl font-extrabold text-slate-900 mt-0.5">{m.value}</div>
             </div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              {c.s}
-            </div>
-          </div>
+          </Card>
         ))}
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}
-      >
-        <div
-          style={{
-            padding: "14px 22px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontWeight: 700, fontSize: 14 }}>All Articles</span>
-          <Btn onClick={onAddArticle} size="sm">
-            + Add Article
-          </Btn>
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            placeholder="Search articles..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input pl-9 w-56"
+          />
         </div>
-        {urls.map((u) => {
-          const sc = statusCfg[u.status] || statusCfg.active;
-          const s = u.stats || {};
-          return (
-            <div
-              key={u.id}
-              onClick={() => onSelectUrl(u.id)}
-              style={{
-                padding: "14px 22px",
-                borderBottom: "1px solid #f8fafc",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                transition: "background 0.12s",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#f8fafc")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              <div
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  background:
-                    u.status === "declining"
-                      ? "#dc2626"
-                      : u.status === "growing"
-                        ? "#059669"
-                        : u.status === "recovering"
-                          ? "#2563eb"
-                          : "#94a3b8",
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {u.title}
-                </div>
-                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                  {u.category} · {s.activeKeywords || 0} keywords
-                </div>
-              </div>
-              {s.avgPosition && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 16,
-                    alignItems: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                      Avg Pos
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        fontFamily: "'JetBrains Mono',monospace",
-                        color:
-                          parseFloat(s.avgPosition) <= 5
-                            ? "#059669"
-                            : parseFloat(s.avgPosition) <= 10
-                              ? "#0f172a"
-                              : "#dc2626",
-                      }}
-                    >
-                      {s.avgPosition}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 10, color: "#94a3b8" }}>Clicks</div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        fontFamily: "'JetBrains Mono',monospace",
-                      }}
-                    >
-                      {s.totalClicks?.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {s.openAlerts > 0 && (
-                <span
-                  style={{
-                    background: "#fef2f2",
-                    color: "#dc2626",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                  }}
-                >
-                  {s.openAlerts}
-                </span>
-              )}
-              <Badge color={sc.c} bg={sc.b}>
-                {sc.l}
-              </Badge>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                style={{ flexShrink: 0, color: "#cbd5e1" }}
-              >
-                <path
-                  d="M6 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-          );
-        })}
-        {urls.length === 0 && (
-          <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📝</div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              No articles tracked yet
-            </div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>
-              Click "Add Article" to start tracking your first URL
-            </div>
-          </div>
-        )}
+        <Select
+          options={categoryOptions}
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+        />
+        <Select
+          options={localeOptions}
+          value={filterLocale}
+          onChange={e => setFilterLocale(e.target.value)}
+        />
+        <div className="ml-auto">
+          <Button variant="primary" size="sm" onClick={onAddArticle}>
+            <Plus size={14} className="mr-1.5" />
+            Add Article
+          </Button>
+        </div>
       </div>
+
+      {/* Article List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Spinner size={24} className="text-slate-400" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState message="No articles found" icon={<BarChart3 size={28} />} />
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(article => {
+            const totalKeywords = (article.locales || []).reduce(
+              (sum, l) => sum + (l.keywordCount || 0), 0
+            );
+
+            return (
+              <Card
+                key={article.id}
+                className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:border-slate-300 hover:shadow-sm transition-all"
+                onClick={() => onSelectArticle(article.id)}
+              >
+                {/* Title + meta */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">
+                    {article.title}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {article.category && (
+                      <Badge variant="default" className="text-[10px]">{article.category}</Badge>
+                    )}
+                    <span className="text-[11px] text-slate-400 truncate">/{article.slug}</span>
+                  </div>
+                </div>
+
+                {/* Locale pills */}
+                <div className="flex flex-wrap gap-1.5 shrink-0">
+                  {(article.locales || []).map(loc => (
+                    <LocalePill
+                      key={loc.id}
+                      locale={loc.locale}
+                      stage={loc.stage}
+                      avgPosition={loc.avgPosition}
+                      change={loc.netChange}
+                    />
+                  ))}
+                </div>
+
+                {/* Keyword count */}
+                <div className="text-xs font-mono text-slate-500 text-right w-14 shrink-0">
+                  {totalKeywords} kw
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

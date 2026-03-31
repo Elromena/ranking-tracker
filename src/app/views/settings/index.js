@@ -1,64 +1,149 @@
-import Btn from "@/component/btn";
-import Input from "@/component/input";
-import Loading from "@/component/loading";
-import Select from "@/component/select";
-import Toggle from "@/component/toggle";
-import { api } from "@/lib/services";
-import { useEffect, useState } from "react";
+"use client";
 
-export default function ConfigPage() {
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/services";
+import {
+  Button,
+  Badge,
+  Card,
+  Input,
+  Spinner,
+  Toggle,
+  Table,
+  Th,
+  Td,
+} from "@/components/ui";
+import {
+  Save,
+  KeyRound,
+  Globe,
+  Tag,
+  Bell,
+  Wrench,
+  Trash2,
+  Plus,
+  Play,
+  CheckCircle,
+  XCircle,
+  FlaskConical,
+  AlertTriangle,
+  Search,
+  Send,
+} from "lucide-react";
+
+export default function SettingsView() {
+  // Config state
   const [cfg, setCfg] = useState({});
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Locales
+  const [locales, setLocales] = useState([]);
+  const [newLocale, setNewLocale] = useState({
+    locale: "",
+    displayName: "",
+    urlPrefix: "",
+    defaultCountries: "",
+    languageCode: "",
+  });
+  const [localesSaving, setLocalesSaving] = useState(false);
+
+  // Categories
+  const [categories, setCategories] = useState([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [catLoading, setCatLoading] = useState(false);
+  const [catDeleting, setCatDeleting] = useState(null);
+
+  // Action results
+  const [dfsResult, setDfsResult] = useState(null);
+  const [dfsTesting, setDfsTesting] = useState(false);
   const [cronRunning, setCronRunning] = useState(false);
   const [cronResult, setCronResult] = useState(null);
-  const [gscTesting, setGscTesting] = useState(false);
-  const [gscTestResult, setGscTestResult] = useState(null);
-  const [backfilling, setBackfilling] = useState(false);
-  const [backfillResult, setBackfillResult] = useState(null);
-  const [listingSites, setListingSites] = useState(false);
-  const [sitesResult, setSitesResult] = useState(null);
-  const [useHistoricalSerp, setUseHistoricalSerp] = useState(true);
-  const [dfsTesting, setDfsTesting] = useState(false);
-  const [dfsTestResult, setDfsTestResult] = useState(null);
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState(null);
 
-  useEffect(() => {
-    api("/config").then((d) => {
-      setCfg(d);
-      setLoading(false);
-    });
-  }, []);
+  // GSC test
+  const [gscTesting, setGscTesting] = useState(false);
+  const [gscResult, setGscResult] = useState(null);
 
-  const u = (k, v) => {
-    setCfg({ ...cfg, [k]: v });
+  // Telegram test
+  const [telegramTesting, setTelegramTesting] = useState(false);
+  const [telegramResult, setTelegramResult] = useState(null);
+
+  // Helpers
+  const u = (key, value) => {
+    setCfg((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
 
-  const save = async () => {
+  const fetchCategories = useCallback(() => {
+    api("/admin/categories")
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, []);
+
+  const fetchLocales = useCallback(() => {
+    api("/locale-configs")
+      .then(setLocales)
+      .catch(() => setLocales([]));
+  }, []);
+
+  // Load everything on mount
+  useEffect(() => {
+    Promise.all([
+      api("/config").catch(() => ({})),
+      api("/admin/categories").catch(() => []),
+      api("/locale-configs").catch(() => []),
+    ])
+      .then(([config, cats, locs]) => {
+        setCfg(config || {});
+        setCategories(cats || []);
+        setLocales(Array.isArray(locs) ? locs : []);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Save all config
+  const saveConfig = async () => {
     setSaving(true);
     setSaved(false);
     try {
-      await api("/config", { method: "POST", body: JSON.stringify(cfg) });
+      await api("/config", {
+        method: "POST",
+        body: JSON.stringify(cfg),
+      });
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000); // Hide after 3 seconds
+      setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      alert(`Failed to save configuration: ${e.message}`);
-      console.error("Save error:", e);
+      alert(`Failed to save: ${e.message}`);
     } finally {
       setSaving(false);
     }
   };
 
+  // Test DataForSEO
+  const testDfs = async () => {
+    setDfsTesting(true);
+    setDfsResult(null);
+    try {
+      const result = await api("/admin/test-dfs", {
+        method: "POST",
+        body: JSON.stringify({ keyword: "crypto affiliate programs" }),
+      });
+      setDfsResult(result);
+    } catch (e) {
+      setDfsResult({ ok: false, error: e.message });
+    }
+    setDfsTesting(false);
+  };
+
+  // Run Cron
   const runCron = async () => {
     setCronRunning(true);
     setCronResult(null);
     try {
-      const result = await api("/admin/trigger-cron", {
-        method: "POST",
-      });
+      const result = await api("/admin/trigger-cron", { method: "POST" });
       setCronResult(result);
     } catch (e) {
       setCronResult({ ok: false, error: e.message });
@@ -66,60 +151,9 @@ export default function ConfigPage() {
     setCronRunning(false);
   };
 
-  const testGSC = async () => {
-    setGscTesting(true);
-    setGscTestResult(null);
-    try {
-      const result = await fetch("/api/test-gsc");
-      const data = await result.json();
-      setGscTestResult(data);
-    } catch (e) {
-      setGscTestResult({ success: false, errors: [e.message] });
-    }
-    setGscTesting(false);
-  };
-
-  const runBackfill = async (weeks = 4) => {
-    setBackfilling(true);
-    setBackfillResult(null);
-    try {
-      const result = await api("/admin/backfill", {
-        method: "POST",
-        body: JSON.stringify({
-          weeksBack: weeks,
-          useHistoricalSerp: useHistoricalSerp,
-        }),
-      });
-      setBackfillResult(result);
-    } catch (e) {
-      setBackfillResult({ ok: false, error: e.message });
-    }
-    setBackfilling(false);
-  };
-
-  const testDFS = async () => {
-    setDfsTesting(true);
-    setDfsTestResult(null);
-    try {
-      // Use first keyword from first tracked URL, or a default
-      const result = await api("/admin/test-dfs", {
-        method: "POST",
-        body: JSON.stringify({ keyword: "crypto affiliate programs" }),
-      });
-      setDfsTestResult(result);
-    } catch (e) {
-      setDfsTestResult({ ok: false, error: e.message });
-    }
-    setDfsTesting(false);
-  };
-
+  // Clear snapshots
   const clearSnapshots = async () => {
-    if (
-      !confirm(
-        "This will delete ALL ranking snapshots and alerts. Are you sure?",
-      )
-    )
-      return;
+    if (!confirm("This will delete ALL ranking snapshots and alerts. Are you sure?")) return;
     setClearing(true);
     setClearResult(null);
     try {
@@ -131,758 +165,640 @@ export default function ConfigPage() {
     setClearing(false);
   };
 
-  const listGSCSites = async () => {
-    setListingSites(true);
-    setSitesResult(null);
+  // Test GSC
+  const testGsc = async () => {
+    setGscTesting(true);
+    setGscResult(null);
     try {
-      const result = await fetch("/api/gsc/list-sites");
-      const data = await result.json();
-      setSitesResult(data);
+      const result = await api("/test-gsc");
+      setGscResult(result);
     } catch (e) {
-      setSitesResult({ success: false, error: e.message });
+      setGscResult({ success: false, message: e.message });
     }
-    setListingSites(false);
+    setGscTesting(false);
   };
 
-  if (loading) return <Loading />;
+  // Test Telegram
+  const testTelegram = async () => {
+    setTelegramTesting(true);
+    setTelegramResult(null);
+    try {
+      const result = await api("/admin/test-telegram", { method: "POST" });
+      setTelegramResult(result);
+    } catch (e) {
+      setTelegramResult({ ok: false, error: e.message });
+    }
+    setTelegramTesting(false);
+  };
 
-  const Section = ({ title, desc, children }) => (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>
-        {title}
+  // Add category
+  const addCategory = async () => {
+    if (!newCatName.trim()) return;
+    setCatLoading(true);
+    try {
+      await api("/admin/categories", {
+        method: "POST",
+        body: JSON.stringify({ name: newCatName }),
+      });
+      setNewCatName("");
+      fetchCategories();
+    } catch (e) {
+      alert(`Failed to add category: ${e.message}`);
+    }
+    setCatLoading(false);
+  };
+
+  // Delete category
+  const deleteCategory = async (id) => {
+    setCatDeleting(id);
+    try {
+      await api(`/admin/categories/${id}`, { method: "DELETE" });
+      fetchCategories();
+    } catch (e) {
+      alert(`Failed to delete: ${e.message}`);
+    }
+    setCatDeleting(null);
+  };
+
+  // Add locale
+  const addLocale = async () => {
+    if (!newLocale.locale.trim() || !newLocale.displayName.trim()) return;
+    setLocalesSaving(true);
+    try {
+      await api("/locale-configs", {
+        method: "POST",
+        body: JSON.stringify({
+          locale: newLocale.locale,
+          displayName: newLocale.displayName,
+          urlPrefix: newLocale.urlPrefix,
+          defaultCountries: newLocale.defaultCountries
+            .split(",")
+            .map((c) => c.trim())
+            .filter(Boolean),
+          languageCode: newLocale.languageCode,
+        }),
+      });
+      setNewLocale({
+        locale: "",
+        displayName: "",
+        urlPrefix: "",
+        defaultCountries: "",
+        languageCode: "",
+      });
+      fetchLocales();
+    } catch (e) {
+      alert(`Failed to add locale: ${e.message}`);
+    }
+    setLocalesSaving(false);
+  };
+
+  // Toggle locale enabled
+  const toggleLocaleEnabled = async (locale) => {
+    const updated = locales.map((l) =>
+      l.locale === locale.locale ? { ...l, enabled: !l.enabled } : l,
+    );
+    setLocales(updated);
+    try {
+      await api("/locale-configs", {
+        method: "POST",
+        body: JSON.stringify({
+          ...locale,
+          enabled: !locale.enabled,
+        }),
+      });
+    } catch (e) {
+      fetchLocales();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Spinner size={24} className="text-slate-400" />
       </div>
-      {desc && (
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 14 }}>
-          {desc}
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {children}
-      </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 680 }}>
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginBottom: 16,
-        }}
-      >
-        <Section
-          title="🔗 Data Sources"
-          desc="DataForSEO for rankings (required) • GSC for traffic data (optional)"
-        >
-          <div>
-            <Input
-              label="Target Domain"
-              value={cfg.targetDomain || ""}
-              onChange={(v) => u("targetDomain", v)}
-              placeholder="blockchain-ads.com"
-            />
-          </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: -8 }}>
-            Your domain name without www or https — used to find your articles
-            in SERP results
-          </div>
-          <div>
-            <Input
-              label="GSC Property URL (Optional - For Traffic Data)"
-              value={cfg.gscProperty || ""}
-              onChange={(v) => u("gscProperty", v)}
-              placeholder="Leave empty if not using GSC"
-            />
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <Btn
-              onClick={listGSCSites}
-              variant={listingSites ? "secondary" : "secondary"}
-              size="sm"
-            >
-              {listingSites ? "⏳ Loading..." : "📋 List My GSC Sites"}
-            </Btn>
-            <Btn
-              onClick={testGSC}
-              variant={gscTesting ? "secondary" : "secondary"}
-              size="sm"
-            >
-              {gscTesting ? "⏳ Testing..." : "🔍 Test GSC Connection"}
-            </Btn>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>
-              List available sites or test connection
-            </span>
-          </div>
-
-          {sitesResult && (
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 8,
-                background: sitesResult.success ? "#ecfdf5" : "#fef2f2",
-                fontSize: 12,
-              }}
-            >
-              {sitesResult.success ? (
-                <>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: "#059669",
-                      marginBottom: 8,
-                    }}
-                  >
-                    ✅ Found {sitesResult.count} GSC{" "}
-                    {sitesResult.count === 1 ? "property" : "properties"}
-                  </div>
-                  {sitesResult.serviceAccountEmail && (
-                    <div
-                      style={{
-                        color: "#065f46",
-                        marginBottom: 8,
-                        fontSize: 11,
-                      }}
-                    >
-                      Service Account: {sitesResult.serviceAccountEmail}
-                    </div>
-                  )}
-                  {sitesResult.sites && sitesResult.sites.length > 0 ? (
-                    <>
-                      <div
-                        style={{
-                          color: "#065f46",
-                          marginBottom: 6,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Available properties:
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                        }}
-                      >
-                        {sitesResult.sites.map((site, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              padding: 10,
-                              background: "#fff",
-                              borderRadius: 6,
-                              border: "1px solid #d1fae5",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <div>
-                              <div
-                                style={{
-                                  fontFamily: "'JetBrains Mono',monospace",
-                                  fontSize: 11,
-                                  color: "#059669",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {site.siteUrl}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: "#94a3b8",
-                                  marginTop: 2,
-                                }}
-                              >
-                                Permission: {site.permissionLevel}
-                              </div>
-                            </div>
-                            <Btn
-                              size="sm"
-                              onClick={() => {
-                                u("gscProperty", site.siteUrl);
-                                setSitesResult(null);
-                              }}
-                            >
-                              Use This
-                            </Btn>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ color: "#065f46", marginTop: 4 }}>
-                      {sitesResult.hint}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: "#dc2626",
-                      marginBottom: 6,
-                    }}
-                  >
-                    ❌ {sitesResult.error || "Failed to list sites"}
-                  </div>
-                  {sitesResult.hint && (
-                    <div
-                      style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
-                    >
-                      💡 {sitesResult.hint}
-                    </div>
-                  )}
-                  {sitesResult.details && (
-                    <div
-                      style={{
-                        color: "#991b1b",
-                        marginTop: 6,
-                        fontSize: 10,
-                        fontFamily: "'JetBrains Mono',monospace",
-                      }}
-                    >
-                      {sitesResult.details}
-                    </div>
-                  )}
-                  {sitesResult.serviceAccountEmail && (
-                    <div
-                      style={{ color: "#991b1b", marginTop: 6, fontSize: 11 }}
-                    >
-                      Add this email to GSC: {sitesResult.serviceAccountEmail}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {gscTestResult && (
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 8,
-                background: gscTestResult.success ? "#ecfdf5" : "#fef2f2",
-                fontSize: 12,
-              }}
-            >
-              {gscTestResult.success ? (
-                <>
-                  <div style={{ fontWeight: 700, color: "#059669" }}>
-                    ✅ GSC Connection Working!
-                  </div>
-                  {gscTestResult.info?.serviceAccountEmail && (
-                    <div
-                      style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}
-                    >
-                      Service Account: {gscTestResult.info.serviceAccountEmail}
-                    </div>
-                  )}
-                  {gscTestResult.info?.rowCount !== undefined && (
-                    <div style={{ color: "#065f46", marginTop: 4 }}>
-                      Retrieved {gscTestResult.info.rowCount} keywords from GSC
-                    </div>
-                  )}
-                  {gscTestResult.info?.sampleKeywords &&
-                    gscTestResult.info.sampleKeywords.length > 0 && (
-                      <div
-                        style={{ marginTop: 8, fontSize: 11, color: "#064e3b" }}
-                      >
-                        <strong>Sample keywords:</strong>
-                        <ul style={{ marginTop: 4, paddingLeft: 18 }}>
-                          {gscTestResult.info.sampleKeywords.map((kw, i) => (
-                            <li key={i}>
-                              {kw.keyword} - Pos: {kw.position}, Clicks:{" "}
-                              {kw.clicks}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                </>
-              ) : (
-                <>
-                  <div style={{ fontWeight: 700, color: "#dc2626" }}>
-                    ❌ GSC Connection Failed
-                  </div>
-                  {gscTestResult.errors &&
-                    gscTestResult.errors.map((err, i) => (
-                      <div
-                        key={i}
-                        style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
-                      >
-                        • {err}
-                      </div>
-                    ))}
-                </>
-              )}
-            </div>
-          )}
-
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            <Select
-              label="Country"
-              value={cfg.dfsCountry || "us"}
-              onChange={(v) => u("dfsCountry", v)}
-              options={[
-                { v: "us", l: "United States" },
-                { v: "gb", l: "United Kingdom" },
-                { v: "ng", l: "Nigeria" },
-                { v: "de", l: "Germany" },
-                { v: "ca", l: "Canada" },
-              ]}
-            />
-            <Select
-              label="Language"
-              value={cfg.dfsLanguage || "en"}
-              onChange={(v) => u("dfsLanguage", v)}
-              options={[
-                { v: "en", l: "English" },
-                { v: "de", l: "German" },
-                { v: "fr", l: "French" },
-              ]}
-            />
-          </div>
-          <div
-            style={{
-              padding: 12,
-              background: "#eff6ff",
-              borderRadius: 8,
-              fontSize: 12,
-              color: "#2563eb",
-            }}
-          >
-            💡 <strong>API keys are set via environment variables</strong> on
-            Railway, not here. This keeps them secure.
-            <br />
-            <br />
-            <strong>Required:</strong> <code>DATAFORSEO_LOGIN</code>,{" "}
-            <code>DATAFORSEO_PASSWORD</code>
-            <br />
-            <strong>Optional:</strong> <code>GSC_CREDENTIALS</code> (only for
-            traffic data), <code>TELEGRAM_BOT_TOKEN</code>,{" "}
-            <code>TELEGRAM_CHAT_ID</code> (for alerts)
-          </div>
-        </Section>
+    <div className="max-w-2xl space-y-6">
+      {/* Save Button - Top */}
+      <div className="flex items-center gap-3">
+        <Button onClick={saveConfig} disabled={saving}>
+          <span className="flex items-center gap-2">
+            {saving ? (
+              <Spinner size={14} />
+            ) : (
+              <Save size={14} />
+            )}
+            {saving ? "Saving..." : "Save Configuration"}
+          </span>
+        </Button>
+        {saved && (
+          <span className="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+            <CheckCircle size={14} />
+            Saved
+          </span>
+        )}
       </div>
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginBottom: 16,
-        }}
-      >
-        <Section title="⚡ Alert Thresholds">
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            <Input
-              label="Position drop threshold"
-              value={cfg.alertThreshold || "3"}
-              onChange={(v) => u("alertThreshold", v)}
-              type="number"
-            />
-            <Input
-              label="Click drop % threshold"
-              value={cfg.clickDropPct || "20"}
-              onChange={(v) => u("clickDropPct", v)}
-              type="number"
-            />
-          </div>
-          <Toggle
-            label="Page 1 exit alert"
-            desc="Alert when any keyword falls off top 10"
-            checked={cfg.page1Alert !== "false"}
-            onChange={(v) => u("page1Alert", String(v))}
-          />
-        </Section>
-      </div>
-
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginBottom: 16,
-        }}
-      >
-        <Section
-          title="🤖 Auto-Discovery (Optional - Requires GSC)"
-          desc="Auto-discover keywords from GSC traffic data"
-        >
-          <div
-            style={{
-              padding: 10,
-              background: "#fef3c7",
-              borderRadius: 6,
-              fontSize: 11,
-              color: "#92400e",
-              marginBottom: 10,
-            }}
-          >
-            ⚠️ This feature requires GSC configuration. Manually add keywords if
-            GSC not set up.
-          </div>
-          <Toggle
-            label="Auto-add GSC keywords"
-            desc="Track new keywords that surface in GSC top queries (needs GSC)"
-            checked={cfg.autoAddGsc !== "false"}
-            onChange={(v) => u("autoAddGsc", String(v))}
-          />
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            <Input
-              label="Min impressions to auto-add"
-              value={cfg.autoAddMinImpr || "100"}
-              onChange={(v) => u("autoAddMinImpr", v)}
-              type="number"
-            />
-            <Input
-              label="Max keywords per URL"
-              value={cfg.maxKwPerUrl || "10"}
-              onChange={(v) => u("maxKwPerUrl", v)}
-              type="number"
-            />
-          </div>
-        </Section>
-      </div>
-
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginBottom: 16,
-        }}
-      >
-        <Section title="🕐 Data Management">
+      {/* Section 1: API Credentials */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={KeyRound}
+          title="API Credentials"
+          description="DataForSEO and notification credentials"
+        />
+        <div className="space-y-4 mt-4">
           <Input
-            label="Archive data after (weeks)"
-            value={cfg.archiveWeeks || "13"}
-            onChange={(v) => u("archiveWeeks", v)}
-            type="number"
+            label="DataForSEO Login"
+            value={cfg.dfsLogin || ""}
+            onChange={(e) => u("dfsLogin", typeof e === "string" ? e : e.target.value)}
+            placeholder="your-login@email.com"
           />
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: -8 }}>
-            Weekly snapshots older than this get deleted. Monthly aggregates are
-            kept forever.
+          <Input
+            label="DataForSEO Password"
+            type="password"
+            value={cfg.dfsPassword || ""}
+            onChange={(e) => u("dfsPassword", typeof e === "string" ? e : e.target.value)}
+            placeholder="your-api-password"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Telegram Bot Token"
+              value={cfg.telegramBotToken || ""}
+              onChange={(e) => u("telegramBotToken", typeof e === "string" ? e : e.target.value)}
+              placeholder="123456:ABC-DEF..."
+            />
+            <Input
+              label="Telegram Chat ID"
+              value={cfg.telegramChatId || ""}
+              onChange={(e) => u("telegramChatId", typeof e === "string" ? e : e.target.value)}
+              placeholder="-1001234567890"
+            />
           </div>
-        </Section>
-      </div>
+          <Input
+            label="Target Domain"
+            value={cfg.targetDomain || ""}
+            onChange={(e) => u("targetDomain", typeof e === "string" ? e : e.target.value)}
+            placeholder="example.com"
+          />
+          <p className="text-xs text-slate-400">
+            Your domain without www or https -- used to find your articles in SERP results.
+          </p>
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginBottom: 16,
-        }}
-      >
-        <Section title="🛠 Manual Actions">
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <Btn
-              onClick={testDFS}
-              variant={dfsTesting ? "secondary" : "secondary"}
-              size="sm"
-            >
-              {dfsTesting ? "⏳ Testing..." : "🔍 Test DataForSEO"}
-            </Btn>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>
-              Check if DataForSEO can find your domain in SERP results
-            </span>
+          {/* Test DFS Button */}
+          <div className="flex items-center gap-3 pt-2">
+            <Button variant="secondary" size="sm" onClick={testDfs} disabled={dfsTesting}>
+              <span className="flex items-center gap-1.5">
+                {dfsTesting ? <Spinner size={12} /> : <FlaskConical size={14} />}
+                {dfsTesting ? "Testing..." : "Test DataForSEO"}
+              </span>
+            </Button>
           </div>
-          {dfsTestResult && (
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 8,
-                background: dfsTestResult.found ? "#ecfdf5" : "#fef2f2",
-                fontSize: 12,
-              }}
-            >
-              {dfsTestResult.found ? (
+
+          {dfsResult && (
+            <ResultBox success={dfsResult.found || dfsResult.ok}>
+              {dfsResult.found ? (
                 <>
-                  <div style={{ fontWeight: 700, color: "#059669" }}>
-                    ✅ Found! Position #{dfsTestResult.position}
-                  </div>
-                  <div style={{ color: "#065f46", marginTop: 4, fontSize: 11 }}>
-                    Keyword: {dfsTestResult.keyword}
-                  </div>
-                  <div style={{ color: "#065f46", marginTop: 2, fontSize: 11 }}>
-                    Target Domain: {dfsTestResult.targetDomain}
-                  </div>
-                  <div style={{ color: "#065f46", marginTop: 2, fontSize: 11 }}>
-                    Found URL: {dfsTestResult.foundUrl}
-                  </div>
+                  <p className="font-bold text-emerald-700">
+                    Found! Position #{dfsResult.position}
+                  </p>
+                  <p className="text-xs text-emerald-600 mt-1">
+                    Keyword: {dfsResult.keyword}
+                  </p>
+                  <p className="text-xs text-emerald-600">
+                    URL: {dfsResult.foundUrl}
+                  </p>
+                </>
+              ) : (
+                <p className="font-bold text-red-700">
+                  {dfsResult.error || "Domain not found in top 100"}
+                </p>
+              )}
+            </ResultBox>
+          )}
+        </div>
+      </Card>
+
+      {/* Section 2: Google Search Console */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Search}
+          title="Google Search Console"
+          description="Connect GSC to get traffic data (clicks, impressions) for your articles"
+        />
+        <div className="mt-4 space-y-4">
+          <div className="px-4 py-3 bg-slate-50 rounded-lg text-xs text-slate-600 space-y-2">
+            <p className="font-semibold text-slate-700">Setup Instructions:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Create a service account in Google Cloud Console</li>
+              <li>Download the JSON key file</li>
+              <li>Set <code className="bg-slate-200 px-1 rounded">GSC_CREDENTIALS</code> env var to the JSON content</li>
+              <li>Set <code className="bg-slate-200 px-1 rounded">GSC_PROPERTY</code> to your Search Console property URL (e.g. <code className="bg-slate-200 px-1 rounded">https://example.com</code>)</li>
+              <li>Add the service account email as a user in Search Console → Settings → Users and permissions</li>
+            </ol>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" size="sm" onClick={testGsc} disabled={gscTesting}>
+              <span className="flex items-center gap-1.5">
+                {gscTesting ? <Spinner size={12} /> : <FlaskConical size={14} />}
+                {gscTesting ? "Testing..." : "Test GSC Connection"}
+              </span>
+            </Button>
+          </div>
+
+          {gscResult && (
+            <ResultBox success={gscResult.success}>
+              {gscResult.success ? (
+                <>
+                  <p className="font-bold text-emerald-700">{gscResult.message}</p>
+                  {gscResult.info?.serviceAccountEmail && (
+                    <p className="text-xs text-emerald-600 mt-1">Account: {gscResult.info.serviceAccountEmail}</p>
+                  )}
+                  {gscResult.info?.rowCount > 0 && (
+                    <p className="text-xs text-emerald-600">Received {gscResult.info.rowCount} rows of data</p>
+                  )}
                 </>
               ) : (
                 <>
-                  <div style={{ fontWeight: 700, color: "#dc2626" }}>
-                    {dfsTestResult.ok
-                      ? `❌ Domain "${dfsTestResult.targetDomain}" not found in top 100 for "${dfsTestResult.keyword}"`
-                      : `❌ Error: ${dfsTestResult.error}`}
-                  </div>
-                  {dfsTestResult.ok && (
-                    <div
-                      style={{ color: "#991b1b", marginTop: 4, fontSize: 11 }}
-                    >
-                      Check that Target Domain in Data Sources matches your
-                      actual domain.
-                      <br />
-                      Raw config: {dfsTestResult.rawDomain} → Cleaned:{" "}
-                      {dfsTestResult.targetDomain}
-                    </div>
-                  )}
+                  <p className="font-bold text-red-700">{gscResult.message}</p>
+                  {gscResult.errors?.map((err, i) => (
+                    <p key={i} className="text-xs text-red-600 mt-1">{err}</p>
+                  ))}
                 </>
               )}
-            </div>
+            </ResultBox>
+          )}
+        </div>
+      </Card>
+
+      {/* Section 3: Telegram Notifications */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Send}
+          title="Telegram Notifications"
+          description="Get ranking movement alerts via Telegram"
+        />
+        <div className="mt-4 space-y-4">
+          <div className="px-4 py-3 bg-slate-50 rounded-lg text-xs text-slate-600 space-y-2">
+            <p className="font-semibold text-slate-700">Setup Instructions:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Message <code className="bg-slate-200 px-1 rounded">@BotFather</code> on Telegram to create a new bot</li>
+              <li>Copy the bot token and paste it in the &ldquo;Telegram Bot Token&rdquo; field above</li>
+              <li>Add your bot to a group chat (or use a direct chat)</li>
+              <li>Get the chat ID (send a message, then check <code className="bg-slate-200 px-1 rounded">api.telegram.org/bot&lt;token&gt;/getUpdates</code>)</li>
+              <li>Save the configuration, then test below</li>
+            </ol>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" size="sm" onClick={testTelegram} disabled={telegramTesting}>
+              <span className="flex items-center gap-1.5">
+                {telegramTesting ? <Spinner size={12} /> : <Send size={14} />}
+                {telegramTesting ? "Sending..." : "Test Telegram"}
+              </span>
+            </Button>
+          </div>
+
+          {telegramResult && (
+            <ResultBox success={telegramResult.ok}>
+              {telegramResult.ok ? (
+                <p className="font-bold text-emerald-700">Test message sent successfully!</p>
+              ) : (
+                <p className="font-bold text-red-700">{telegramResult.error || "Failed to send test message"}</p>
+              )}
+            </ResultBox>
+          )}
+        </div>
+      </Card>
+
+      {/* Section 4: Locale Management */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Globe}
+          title="Locale Management"
+          description="Configure locales for multi-region tracking"
+        />
+        <div className="mt-4 space-y-4">
+          {/* Existing Locales */}
+          {locales.length > 0 && (
+            <Table>
+              <thead>
+                <tr className="bg-slate-50/50">
+                  <Th>Code</Th>
+                  <Th>Display Name</Th>
+                  <Th>Countries</Th>
+                  <Th>Enabled</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {locales.map((loc) => (
+                  <tr key={loc.locale || loc.id}>
+                    <Td className="font-mono font-semibold">
+                      {(loc.locale || "").toUpperCase()}
+                    </Td>
+                    <Td>{loc.displayName}</Td>
+                    <Td className="text-xs text-slate-500">
+                      {Array.isArray(loc.defaultCountries)
+                        ? loc.defaultCountries.join(", ")
+                        : loc.defaultCountries || "--"}
+                    </Td>
+                    <Td>
+                      <Toggle
+                        checked={loc.enabled !== false}
+                        onChange={() => toggleLocaleEnabled(loc)}
+                      />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          {locales.length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-4">
+              No locales configured yet.
+            </p>
           )}
 
-          <div
-            style={{
-              borderTop: "1px solid #e2e8f0",
-              marginTop: 12,
-              paddingTop: 12,
-            }}
-          >
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <Btn
-                onClick={runCron}
-                variant={cronRunning ? "secondary" : "primary"}
-              >
-                {cronRunning ? "⏳ Running..." : "▶ Run Data Collection Now"}
-              </Btn>
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                Manually trigger the weekly cron job
-              </span>
+          {/* Add New Locale */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Add New Locale
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Input
+                label="Locale Code"
+                value={newLocale.locale}
+                onChange={(e) =>
+                  setNewLocale((p) => ({
+                    ...p,
+                    locale: typeof e === "string" ? e : e.target.value,
+                  }))
+                }
+                placeholder="en"
+              />
+              <Input
+                label="Display Name"
+                value={newLocale.displayName}
+                onChange={(e) =>
+                  setNewLocale((p) => ({
+                    ...p,
+                    displayName: typeof e === "string" ? e : e.target.value,
+                  }))
+                }
+                placeholder="English"
+              />
+              <Input
+                label="URL Prefix"
+                value={newLocale.urlPrefix}
+                onChange={(e) =>
+                  setNewLocale((p) => ({
+                    ...p,
+                    urlPrefix: typeof e === "string" ? e : e.target.value,
+                  }))
+                }
+                placeholder="/en"
+              />
+              <Input
+                label="Default Countries"
+                value={newLocale.defaultCountries}
+                onChange={(e) =>
+                  setNewLocale((p) => ({
+                    ...p,
+                    defaultCountries: typeof e === "string" ? e : e.target.value,
+                  }))
+                }
+                placeholder="us, gb, ca"
+              />
+              <Input
+                label="Language Code"
+                value={newLocale.languageCode}
+                onChange={(e) =>
+                  setNewLocale((p) => ({
+                    ...p,
+                    languageCode: typeof e === "string" ? e : e.target.value,
+                  }))
+                }
+                placeholder="en"
+              />
+              <div className="flex items-end">
+                <Button
+                  size="sm"
+                  onClick={addLocale}
+                  disabled={localesSaving}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {localesSaving ? <Spinner size={12} /> : <Plus size={14} />}
+                    Add
+                  </span>
+                </Button>
+              </div>
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Section 3: Categories */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Tag}
+          title="Categories"
+          description="Manage article categories"
+        />
+        <div className="mt-4 space-y-3">
+          {/* Add New */}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input
+                value={newCatName}
+                onChange={(e) => setNewCatName(typeof e === "string" ? e : e.target.value)}
+                placeholder="New category name..."
+                onKeyDown={(e) => e.key === "Enter" && addCategory()}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button size="sm" onClick={addCategory} disabled={catLoading}>
+                <span className="flex items-center gap-1.5">
+                  {catLoading ? <Spinner size={12} /> : <Plus size={14} />}
+                  Add
+                </span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Category List */}
+          <div className="flex flex-col gap-1.5">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100"
+              >
+                <span className="text-sm font-medium text-slate-700">
+                  {cat.name}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteCategory(cat.id)}
+                  disabled={catDeleting === cat.id}
+                >
+                  {catDeleting === cat.id ? (
+                    <Spinner size={12} />
+                  ) : (
+                    <Trash2 size={14} className="text-red-500" />
+                  )}
+                </Button>
+              </div>
+            ))}
+            {categories.length === 0 && (
+              <p className="text-sm text-slate-400 text-center py-4">
+                No categories yet.
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Section 4: Alert Thresholds */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Bell}
+          title="Alert Thresholds"
+          description="Configure when to trigger ranking alerts"
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          <Input
+            label="Position Drop Threshold"
+            type="number"
+            value={cfg.alertThreshold || "3"}
+            onChange={(e) => u("alertThreshold", typeof e === "string" ? e : e.target.value)}
+            placeholder="3"
+          />
+          <Input
+            label="Default Review Period (days)"
+            type="number"
+            value={cfg.reviewPeriodDays || "7"}
+            onChange={(e) => u("reviewPeriodDays", typeof e === "string" ? e : e.target.value)}
+            placeholder="7"
+          />
+        </div>
+      </Card>
+
+      {/* Section 5: Manual Actions */}
+      <Card className="p-6">
+        <SectionHeader
+          icon={Wrench}
+          title="Manual Actions"
+          description="Trigger data collection or clear data"
+        />
+        <div className="mt-4 space-y-4">
+          {/* Run Cron */}
+          <div className="flex items-center gap-3">
+            <Button onClick={runCron} disabled={cronRunning}>
+              <span className="flex items-center gap-1.5">
+                {cronRunning ? <Spinner size={14} /> : <Play size={14} />}
+                {cronRunning ? "Running..." : "Run Data Collection Now"}
+              </span>
+            </Button>
+            <span className="text-xs text-slate-400">
+              Manually trigger the ranking data collection
+            </span>
+          </div>
+
           {cronResult && (
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 8,
-                background: cronResult.ok ? "#ecfdf5" : "#fef2f2",
-                fontSize: 12,
-              }}
-            >
+            <ResultBox success={cronResult.ok}>
               {cronResult.ok ? (
                 <>
-                  <div style={{ fontWeight: 700, color: "#059669" }}>
-                    ✅ Completed in {cronResult.duration}
-                  </div>
-                  <div style={{ color: "#065f46", marginTop: 4 }}>
+                  <p className="font-bold text-emerald-700">
+                    Completed in {cronResult.duration}
+                  </p>
+                  <p className="text-xs text-emerald-600 mt-1">
                     Alerts: {cronResult.alerts?.critical || 0} critical,{" "}
                     {cronResult.alerts?.warning || 0} warnings,{" "}
                     {cronResult.alerts?.positive || 0} positive
-                  </div>
+                  </p>
                   {cronResult.log && (
-                    <pre
-                      style={{
-                        marginTop: 8,
-                        fontSize: 10,
-                        color: "#64748b",
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "'JetBrains Mono',monospace",
-                      }}
-                    >
+                    <pre className="mt-2 text-xs text-slate-500 font-mono whitespace-pre-wrap">
                       {cronResult.log.join("\n")}
                     </pre>
                   )}
                 </>
               ) : (
-                <div style={{ color: "#dc2626", fontWeight: 600 }}>
-                  ❌ Error: {cronResult.error}
-                </div>
+                <p className="font-bold text-red-700">
+                  Error: {cronResult.error}
+                </p>
               )}
-            </div>
+            </ResultBox>
           )}
 
-          <div
-            style={{
-              borderTop: "1px solid #e2e8f0",
-              marginTop: 20,
-              paddingTop: 20,
-            }}
-          >
-            <div style={{ marginBottom: 12 }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={useHistoricalSerp}
-                  onChange={(e) => setUseHistoricalSerp(e.target.checked)}
-                  style={{ cursor: "pointer" }}
-                />
-                <span
-                  style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}
-                >
-                  Use DataForSEO Historical SERP (Real rankings from past weeks)
+          {/* Clear Data */}
+          <div className="border-t border-slate-100 pt-4">
+            <div className="flex items-center gap-3">
+              <Button variant="danger" onClick={clearSnapshots} disabled={clearing}>
+                <span className="flex items-center gap-1.5">
+                  {clearing ? (
+                    <Spinner size={14} />
+                  ) : (
+                    <AlertTriangle size={14} />
+                  )}
+                  {clearing ? "Clearing..." : "Clear All Ranking Data"}
                 </span>
-              </label>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#94a3b8",
-                  marginLeft: 28,
-                  marginTop: 4,
-                }}
-              >
-                ✅ Checked: Real SERP positions from past (costs DataForSEO
-                credits)
-                <br />❌ Unchecked: GSC average position (free but less
-                accurate)
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <Btn
-                onClick={() => runBackfill(4)}
-                variant={backfilling ? "secondary" : "secondary"}
-              >
-                {backfilling
-                  ? "⏳ Backfilling..."
-                  : "⏮ Backfill Historical Data"}
-              </Btn>
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                Pull last 4 weeks of{" "}
-                {useHistoricalSerp ? "real SERP positions" : "GSC averages"}
+              </Button>
+              <span className="text-xs text-slate-400">
+                Deletes all snapshots and alerts permanently
               </span>
             </div>
-            {backfillResult && (
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 8,
-                  background: backfillResult.ok ? "#ecfdf5" : "#fef2f2",
-                  fontSize: 12,
-                  marginTop: 12,
-                }}
-              >
-                {backfillResult.ok ? (
-                  <>
-                    <div style={{ fontWeight: 700, color: "#059669" }}>
-                      ✅ Backfill completed in {backfillResult.duration}
-                    </div>
-                    <div style={{ color: "#065f46", marginTop: 4 }}>
-                      Created {backfillResult.snapshotsCreated} snapshots,
-                      skipped {backfillResult.snapshotsSkipped} existing
-                    </div>
-                    <div style={{ color: "#065f46", marginTop: 2 }}>
-                      Processed {backfillResult.weeksProcessed} weeks
-                    </div>
-                    {backfillResult.log && (
-                      <pre
-                        style={{
-                          marginTop: 8,
-                          fontSize: 10,
-                          color: "#64748b",
-                          whiteSpace: "pre-wrap",
-                          fontFamily: "'JetBrains Mono',monospace",
-                        }}
-                      >
-                        {backfillResult.log.join("\n")}
-                      </pre>
-                    )}
-                  </>
+
+            {clearResult && (
+              <ResultBox success={clearResult.ok}>
+                {clearResult.ok ? (
+                  <p className="font-bold text-emerald-700">
+                    Cleared {clearResult.snapshotsDeleted} snapshots and{" "}
+                    {clearResult.alertsDeleted} alerts.
+                  </p>
                 ) : (
-                  <div style={{ color: "#dc2626", fontWeight: 600 }}>
-                    ❌ Error: {backfillResult.error}
-                  </div>
+                  <p className="font-bold text-red-700">
+                    Error: {clearResult.error}
+                  </p>
                 )}
-              </div>
+              </ResultBox>
             )}
           </div>
-        </Section>
-      </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Btn onClick={save} variant={saving ? "secondary" : "primary"}>
-          {saving ? "⏳ Saving..." : "💾 Save Configuration"}
-        </Btn>
-        {saved && (
-          <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>
-            ✅ Saved successfully!
-          </span>
+// ── Shared sub-components ────────────────────────────────────
+
+function SectionHeader({ icon: Icon, title, description }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="p-2 rounded-lg bg-slate-50">
+        <Icon size={16} className="text-slate-500" />
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        {description && (
+          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
         )}
       </div>
+    </div>
+  );
+}
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          marginTop: 16,
-          borderLeft: "4px solid #dc2626",
-        }}
-      >
-        <Section title="⚠️ Danger Zone">
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <Btn onClick={clearSnapshots} variant="danger" size="sm">
-              {clearing ? "⏳ Clearing..." : "🗑 Clear All Ranking Data"}
-            </Btn>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>
-              Delete all snapshots and alerts, then re-run backfill
-            </span>
-          </div>
-          {clearResult && (
-            <div
-              style={{
-                padding: 10,
-                borderRadius: 8,
-                background: clearResult.ok ? "#ecfdf5" : "#fef2f2",
-                fontSize: 12,
-                marginTop: 8,
-              }}
-            >
-              {clearResult.ok ? (
-                <div style={{ color: "#059669" }}>
-                  ✅ Cleared {clearResult.snapshotsDeleted} snapshots and{" "}
-                  {clearResult.alertsDeleted} alerts. Ready for fresh backfill!
-                </div>
-              ) : (
-                <div style={{ color: "#dc2626" }}>
-                  ❌ Error: {clearResult.error}
-                </div>
-              )}
-            </div>
-          )}
-        </Section>
-      </div>
+function ResultBox({ success, children }) {
+  return (
+    <div
+      className={`rounded-lg p-4 text-sm ${
+        success
+          ? "bg-emerald-50 border border-emerald-200"
+          : "bg-red-50 border border-red-200"
+      }`}
+    >
+      {children}
     </div>
   );
 }

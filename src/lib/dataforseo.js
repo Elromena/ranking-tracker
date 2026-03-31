@@ -14,6 +14,13 @@ const LOCATION_CODES = {
   de: 2276,
   ca: 2124,
   au: 2036,
+  ru: 2643,
+  kr: 2410,
+  jp: 2392,
+  fr: 2250,
+  es: 2724,
+  in: 2356,
+  br: 2076,
 };
 
 // SerpAPI gl parameter (country codes)
@@ -34,18 +41,45 @@ const LANGUAGE_CODES = {
   de: "de",
 };
 
-function getAuth() {
+// Cached credentials (loaded from DB or env on first call)
+let _cachedAuth = null;
+
+async function getAuth() {
+  if (_cachedAuth) return _cachedAuth;
+
+  // Try DB config first
+  try {
+    const { prisma } = await import("@/lib/db");
+    const configs = await prisma.config.findMany({
+      where: { key: { in: ["dfsLogin", "dfsPassword"] } },
+    });
+    const cfgMap = {};
+    for (const c of configs) cfgMap[c.key] = c.value;
+    if (cfgMap.dfsLogin && cfgMap.dfsPassword) {
+      _cachedAuth = "Basic " + Buffer.from(`${cfgMap.dfsLogin}:${cfgMap.dfsPassword}`).toString("base64");
+      return _cachedAuth;
+    }
+  } catch (e) {
+    // DB not available, fall through to env
+  }
+
+  // Fall back to env vars
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
-  if (!login || !password) throw new Error("DataForSEO credentials not set");
-  return "Basic " + Buffer.from(`${login}:${password}`).toString("base64");
+  if (!login || !password) throw new Error("DataForSEO credentials not set. Add them in Settings or set DATAFORSEO_LOGIN/DATAFORSEO_PASSWORD env vars.");
+  _cachedAuth = "Basic " + Buffer.from(`${login}:${password}`).toString("base64");
+  return _cachedAuth;
 }
 
+// Clear cached auth (call after credentials change in settings)
+function clearAuthCache() { _cachedAuth = null; }
+
 async function dfsRequest(endpoint, body) {
+  const auth = await getAuth();
   const response = await fetch(`${DFS_BASE}${endpoint}`, {
     method: "POST",
     headers: {
-      Authorization: getAuth(),
+      Authorization: auth,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -744,4 +778,4 @@ function serpApiSearch(params) {
 }
 
 // Export provider constants for external use
-export { PROVIDERS };
+export { PROVIDERS, clearAuthCache };

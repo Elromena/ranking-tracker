@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSearchAnalytics, getLastWeekRange } from "@/lib/gsc";
+import { google } from "googleapis";
+import { getLastWeekRange } from "@/lib/gsc";
 
-// GET /api/test-gsc — test if GSC connection is working
-export async function GET(request) {
+export async function GET() {
   const errors = [];
   const info = {};
 
   try {
-    // 1. Check if credentials are set
     if (!process.env.GSC_CREDENTIALS) {
       errors.push("GSC_CREDENTIALS environment variable is not set");
     } else {
@@ -21,58 +20,61 @@ export async function GET(request) {
       }
     }
 
-    // 2. Check if property is set
     if (!process.env.GSC_PROPERTY) {
       errors.push("GSC_PROPERTY environment variable is not set");
     } else {
       info.gscProperty = process.env.GSC_PROPERTY;
     }
 
-    // If we have errors already, return early
     if (errors.length > 0) {
       return NextResponse.json({
-        success: false,
-        errors,
-        info,
+        success: false, errors, info,
         message: "Configuration issues found. Please check your environment variables.",
       }, { status: 400 });
     }
 
-    // 3. Try to make a test request to GSC
     const { startDate, endDate } = getLastWeekRange();
     info.testDateRange = { startDate, endDate };
 
     try {
-      // Make a simple request without filtering by URL - just get site-wide data
-      const testData = await getSearchAnalytics({
-        url: info.gscProperty,
-        startDate,
-        endDate,
-        keywords: []
+      const credentials = JSON.parse(process.env.GSC_CREDENTIALS);
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
+      });
+      const client = google.searchconsole({ version: "v1", auth });
+
+      const response = await client.searchanalytics.query({
+        siteUrl: process.env.GSC_PROPERTY,
+        requestBody: {
+          startDate,
+          endDate,
+          dimensions: ["query"],
+          rowLimit: 5,
+        },
       });
 
+      const rows = response.data.rows || [];
       info.dataReceived = true;
-      info.rowCount = testData.length;
-      
-      if (testData.length > 0) {
-        info.sampleKeywords = testData.slice(0, 5).map(d => ({
-          keyword: d.keyword,
-          clicks: d.clicks,
-          impressions: d.impressions,
-          position: Math.round(d.position * 10) / 10
+      info.rowCount = rows.length;
+
+      if (rows.length > 0) {
+        info.sampleKeywords = rows.map((r) => ({
+          keyword: r.keys[0],
+          clicks: r.clicks,
+          impressions: r.impressions,
+          position: Math.round(r.position * 10) / 10,
         }));
       }
 
       return NextResponse.json({
         success: true,
-        message: "✅ GSC connection is working!",
+        message: "GSC connection is working!",
         info,
       });
-
     } catch (gscError) {
       errors.push(`GSC API Error: ${gscError.message}`);
-      
-      // Common error hints
+
       if (gscError.message.includes("permission") || gscError.message.includes("403")) {
         errors.push("HINT: Make sure you added the service account email as a user in Google Search Console (Settings → Users and permissions)");
       }
@@ -81,13 +83,10 @@ export async function GET(request) {
       }
 
       return NextResponse.json({
-        success: false,
-        errors,
-        info,
+        success: false, errors, info,
         message: "GSC API request failed",
       }, { status: 500 });
     }
-
   } catch (error) {
     return NextResponse.json({
       success: false,

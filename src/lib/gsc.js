@@ -5,7 +5,11 @@ let searchConsole = null;
 function getClient() {
   if (searchConsole) return searchConsole;
 
-  const credentials = JSON.parse(process.env.GSC_CREDENTIALS || '{}');
+  if (!process.env.GSC_CREDENTIALS) {
+    throw new Error('GSC_CREDENTIALS environment variable is not set');
+  }
+
+  const credentials = JSON.parse(process.env.GSC_CREDENTIALS);
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
@@ -16,10 +20,11 @@ function getClient() {
 }
 
 /**
- * Get search analytics for a specific URL and its keywords
- * Returns clicks, impressions, CTR, position for each query
+ * Get page-level traffic for a URL (total clicks, impressions, CTR, position).
+ * Uses 'page' dimension with no query breakdown — this is the correct way to
+ * measure a page's overall traffic since it includes ALL queries, not just tracked ones.
  */
-export async function getSearchAnalytics({ url, startDate, endDate, keywords = [] }) {
+export async function getPageTraffic({ url, startDate, endDate }) {
   const client = getClient();
   const siteUrl = process.env.GSC_PROPERTY;
 
@@ -31,7 +36,7 @@ export async function getSearchAnalytics({ url, startDate, endDate, keywords = [
       requestBody: {
         startDate,
         endDate,
-        dimensions: ['query', 'page'],
+        dimensions: ['page'],
         dimensionFilterGroups: [{
           filters: [{
             dimension: 'page',
@@ -39,48 +44,62 @@ export async function getSearchAnalytics({ url, startDate, endDate, keywords = [
             expression: url,
           }],
         }],
-        rowLimit: 500,
+        rowLimit: 1,
       },
     });
 
     const rows = response.data.rows || [];
+    if (rows.length === 0) return null;
 
-    // If specific keywords provided, filter to those
-    // Otherwise return all queries for this URL
-    if (keywords.length > 0) {
-      const kwSet = new Set(keywords.map(k => k.toLowerCase()));
-      return rows
-        .filter(row => kwSet.has(row.keys[0].toLowerCase()))
-        .map(row => ({
-          keyword: row.keys[0],
-          url: row.keys[1],
-          clicks: row.clicks,
-          impressions: row.impressions,
-          ctr: row.ctr,
-          position: row.position,
-        }));
-    }
-
-    return rows.map(row => ({
-      keyword: row.keys[0],
-      url: row.keys[1],
+    const row = rows[0];
+    return {
+      url: row.keys[0],
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
       position: row.position,
-    }));
+    };
   } catch (error) {
-    console.error(`GSC error for ${url}:`, error.message);
-    return [];
+    throw new Error(`GSC API error for ${url}: ${error.message}`);
   }
 }
 
 /**
- * Get top queries for a URL — used for auto-discovery
+ * Get top queries for a URL — used for keyword discovery.
+ * Returns per-query breakdown (different from getPageTraffic which is page-level totals).
  */
 export async function getTopQueries({ url, startDate, endDate, minImpressions = 100 }) {
-  const results = await getSearchAnalytics({ url, startDate, endDate });
-  return results
+  const client = getClient();
+  const siteUrl = process.env.GSC_PROPERTY;
+
+  if (!siteUrl) throw new Error('GSC_PROPERTY not set');
+
+  const response = await client.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate,
+      endDate,
+      dimensions: ['query'],
+      dimensionFilterGroups: [{
+        filters: [{
+          dimension: 'page',
+          operator: 'equals',
+          expression: url,
+        }],
+      }],
+      rowLimit: 500,
+    },
+  });
+
+  const rows = response.data.rows || [];
+  return rows
+    .map(row => ({
+      keyword: row.keys[0],
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+    }))
     .filter(r => r.impressions >= minImpressions)
     .sort((a, b) => b.impressions - a.impressions);
 }

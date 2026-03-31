@@ -7,90 +7,107 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model TrackedUrl {
-  id        Int       @id @default(autoincrement())
-  url       String    @unique
+// ─── New: Article groups localized URLs together ───
+model Article {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique
   title     String
-  category  String    @default("Advertising")
-  status    String    @default("active") // active, growing, declining, recovering
-  priority  String    @default("medium") // urgent, high, medium, low
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  category  String   @default("Advertising")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  keywords  Keyword[]
-  notes     Note[]
+  locales TrackedUrl[]
 
+  @@map("articles")
+}
+
+// ─── Modified: TrackedUrl is now a locale variant of an Article ───
+model TrackedUrl {
+  id              Int       @id @default(autoincrement())
+  url             String    @unique
+  title           String
+  locale          String    @default("en")
+  trackingEnabled Boolean   @default(true) @map("tracking_enabled")
+
+  // Pipeline stage
+  stage           String    @default("monitoring") // backlog, in_progress, in_review, monitoring, parked
+  reviewStartedAt DateTime? @map("review_started_at")
+  reviewDays      Int       @default(21) @map("review_days")
+
+  // Article group
+  articleId       Int       @map("article_id")
+  article         Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  keywords     Keyword[]
+  notes        Note[]
+  pageTraffic  PageTraffic[]
+
+  @@unique([articleId, locale])
+  @@index([articleId])
+  @@index([locale])
+  @@index([stage])
+  @@index([trackingEnabled])
   @@map("tracked_urls")
 }
 
+// ─── Modified: Keyword with country targeting ───
 model Keyword {
-  id        Int       @id @default(autoincrement())
-  urlId     Int       @map("url_id")
-  keyword   String
-  source    String    @default("manual") // manual, gsc
-  intent    String    @default("commercial") // informational, commercial, transactional, navigational
-  tracked   Boolean   @default(true)
-  createdAt DateTime  @default(now())
+  id              Int      @id @default(autoincrement())
+  urlId           Int      @map("url_id")
+  keyword         String
+  source          String   @default("manual") // manual, gsc
+  intent          String   @default("commercial") // informational, commercial, transactional, navigational
+  tracked         Boolean  @default(true)
+  targetCountries String   @default("us") @map("target_countries") // comma-separated: "us,gb,in"
+  createdAt       DateTime @default(now())
 
-  trackedUrl TrackedUrl      @relation(fields: [urlId], references: [id], onDelete: Cascade)
-  snapshots  WeeklySnapshot[]
-  alerts     Alert[]
+  trackedUrl TrackedUrl @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  snapshots  Snapshot[]
 
   @@unique([urlId, keyword])
+  @@index([urlId, tracked])
   @@map("keywords")
 }
 
-model WeeklySnapshot {
-  id            Int      @id @default(autoincrement())
-  keywordId     Int      @map("keyword_id")
-  weekStarting  DateTime @map("week_starting")
-  
-  // GSC data
-  gscPosition   Float?   @map("gsc_position")
-  gscClicks     Int      @default(0) @map("gsc_clicks")
-  gscImpressions Int     @default(0) @map("gsc_impressions")
-  gscCtr        Float?   @map("gsc_ctr")
-  
+// ─── Renamed from WeeklySnapshot to Snapshot (supports daily data now) ───
+model Snapshot {
+  id           Int      @id @default(autoincrement())
+  keywordId    Int      @map("keyword_id")
+  date         DateTime // actual check date
+  weekStarting DateTime @map("week_starting") // Monday of the week (backward compat)
+  countryCode  String   @default("us") @map("country_code")
+
   // DataForSEO data
-  serpPosition  Int?     @map("serp_position")
-  serpFeatures  String?  @map("serp_features") // comma-separated: featured_snippet,paa,etc
-  
+  serpPosition Int?    @map("serp_position")
+  serpFeatures String? @map("serp_features") // comma-separated: featured_snippet,paa,etc
+
   // Computed
-  prevPosition  Int?     @map("prev_position")
-  posChange     Int      @default(0) @map("pos_change")
-  
-  createdAt     DateTime @default(now())
+  prevPosition Int? @map("prev_position")
+  posChange    Int  @default(0) @map("pos_change")
 
-  keyword       Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
-
-  @@unique([keywordId, weekStarting])
-  @@index([weekStarting])
-  @@map("weekly_snapshots")
-}
-
-model Alert {
-  id        Int      @id @default(autoincrement())
-  keywordId Int      @map("keyword_id")
-  alertDate DateTime @default(now()) @map("alert_date")
-  type      String   // position_drop, left_page1, click_drop, recovery, new_top3, gradual_decline
-  severity  String   // critical, warning, positive
-  details   String
-  action    String?
-  status    String   @default("open") // open, in_progress, planned, on_hold, monitoring, resolved
-  resolvedAt DateTime? @map("resolved_at")
   createdAt DateTime @default(now())
 
-  keyword   Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
 
-  @@index([alertDate])
-  @@index([severity])
-  @@map("alerts")
+  @@unique([keywordId, countryCode, date])
+  @@index([keywordId, date(sort: Desc)])
+  @@index([date])
+  @@index([weekStarting])
+  @@index([countryCode])
+  @@index([posChange, date])
+  @@index([serpPosition, date])
+  @@map("weekly_snapshots") // keep same table name for migration
 }
 
+// ─── Modified: Note with type field ───
 model Note {
   id        Int      @id @default(autoincrement())
   urlId     Int      @map("url_id")
   text      String
+  type      String   @default("change") // change, optimization, technical, algorithm, general
   createdAt DateTime @default(now())
 
   trackedUrl TrackedUrl @relation(fields: [urlId], references: [id], onDelete: Cascade)
@@ -99,18 +116,66 @@ model Note {
   @@map("notes")
 }
 
+// ─── Page-level GSC traffic (not per-keyword) ───
+model PageTraffic {
+  id          Int      @id @default(autoincrement())
+  urlId       Int      @map("url_id")
+  date        DateTime
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  ctr         Float?
+  position    Float?
+  createdAt   DateTime @default(now())
+
+  trackedUrl TrackedUrl @relation(fields: [urlId], references: [id], onDelete: Cascade)
+
+  @@unique([urlId, date])
+  @@index([urlId, date(sort: Desc)])
+  @@map("page_traffic")
+}
+
+// ─── New: Configurable locale definitions ───
+model LocaleConfig {
+  id               Int      @id @default(autoincrement())
+  locale           String   @unique // en, ru, ko
+  displayName      String   @map("display_name") // English, Russian, Korean
+  urlPrefix        String   @default("") @map("url_prefix") // "", "ru", "ko"
+  defaultCountries String   @default("us") @map("default_countries") // comma-separated
+  languageCode     String   @default("en") @map("language_code") // DataForSEO language code
+  enabled          Boolean  @default(true)
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now())
+
+  @@map("locale_configs")
+}
+
+// ─── New: API cost tracking per cron execution ───
+model CronRun {
+  id                Int       @id @default(autoincrement())
+  startedAt         DateTime  @default(now()) @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  apiCalls          Int       @default(0) @map("api_calls")
+  estimatedCost     Float     @default(0) @map("estimated_cost")
+  keywordsProcessed Int       @default(0) @map("keywords_processed")
+  errors            Int       @default(0)
+  status            String    @default("running") // running, completed, failed
+  log               String?   // JSON array of log entries
+
+  @@index([startedAt])
+  @@map("cron_runs")
+}
+
+// ─── Unchanged ───
 model Config {
-    // id    Int    @id @default(1)
-  id    Int    @id @default(autoincrement())  // Change this
+  id    Int    @id @default(autoincrement())
   key   String @unique
   value String
 
   @@map("config")
 }
 
-
 model Category {
-  id    Int    @id @default(autoincrement())  // Change this
+  id        Int      @id @default(autoincrement())
   name      String   @unique
   createdAt DateTime @default(now())
 }

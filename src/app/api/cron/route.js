@@ -1,24 +1,13 @@
 import { batchSerpPositions, PROVIDERS } from "@/lib/dataforseo";
 import { prisma } from "@/lib/db";
-import { formatWeeklyReport, sendMessage } from "@/lib/telegram";
+import { sendMessage } from "@/lib/telegram";
+import { getPageTraffic, getLastWeekRange } from "@/lib/gsc";
 import { NextResponse } from "next/server";
 
-// GSC is optional - only used for traffic data (clicks/impressions)
-let getSearchAnalytics, getLastWeekRange, getTopQueries;
-try {
-  const gsc = await import("@/lib/gsc");
-  getSearchAnalytics = gsc.getSearchAnalytics;
-  getLastWeekRange = gsc.getLastWeekRange;
-  getTopQueries = gsc.getTopQueries;
-} catch (e) {
-  console.log("GSC module not available, traffic data will be skipped");
-}
+const COST_PER_CALL = 0.0025;
 
-// POST /api/cron — run the weekly data collection
-// Protected by CRON_SECRET header
+// POST /api/cron — multi-locale, tier-based data collection
 export async function POST(request) {
-  // Simple auth check
-
   const secret = request.headers.get("x-cron-secret");
   if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,7 +15,14 @@ export async function POST(request) {
 
   const startTime = Date.now();
   const log = [];
-  const newAlerts = { critical: [], warning: [], positive: [] };
+  let totalApiCalls = 0;
+  let totalKeywordsProcessed = 0;
+  let totalErrors = 0;
+
+  // Create CronRun record
+  const cronRun = await prisma.cronRun.create({
+    data: { status: "running" },
+  });
 
   try {
     // 1. Load config
@@ -34,16 +30,11 @@ export async function POST(request) {
     const cfg = {};
     for (const c of configs) cfg[c.key] = c.value;
 
-    const country = cfg.dfsCountry || "us";
-    const language = cfg.dfsLanguage || "en";
     const alertThreshold = parseInt(cfg.alertThreshold || "3");
-    const autoAddGsc = cfg.autoAddGsc !== "false";
-    const autoAddMinImpr = parseInt(cfg.autoAddMinImpr || "100");
-    const maxKwPerUrl = parseInt(cfg.maxKwPerUrl || "10");
-
-    // Extract clean domain for DataForSEO matching
-    const rawDomain =
-      cfg.targetDomain || cfg.gscProperty || process.env.GSC_PROPERTY || "";
+    const rawDomain = cfg.targetDomain;
+    if (!rawDomain) {
+      throw new Error("Target domain is not configured. Set it in Settings → API Credentials → Target Domain.");
+    }
     const targetDomain = rawDomain
       .replace("sc-domain:", "")
       .replace("https://", "")
@@ -53,336 +44,361 @@ export async function POST(request) {
 
     log.push(`Target domain: ${targetDomain}`);
 
-    // 2. Get all tracked URLs with their keywords
-    const urls = await prisma.trackedUrl.findMany({
+    // 2. Load locale configs for language mapping
+    const localeConfigs = await prisma.localeConfig.findMany({
+      where: { enabled: true },
+    });
+    const localeMap = {};
+    for (const lc of localeConfigs) {
+      localeMap[lc.locale] = lc;
+    }
+    log.push(`Active locales: ${localeConfigs.map(l => l.locale).join(", ")}`);
+
+    // 3. Auto-review expiry: move expired in_review locales to monitoring
+    const expiredReviews = await prisma.$queryRaw`
+      UPDATE tracked_urls
+      SET stage = 'monitoring', review_started_at = NULL
+      WHERE stage = 'in_review'
+        AND review_started_at IS NOT NULL
+        AND review_started_at + (review_days || ' days')::interval < NOW()
+      RETURNING id, locale
+    `;
+    if (expiredReviews.length > 0) {
+      log.push(`Auto-expired ${expiredReviews.length} review periods to monitoring`);
+    }
+
+    // 4. Load all locale variants with keywords, grouped by stage
+    const locales = await prisma.trackedUrl.findMany({
+      where: { trackingEnabled: true },
       include: {
         keywords: {
           where: { tracked: true },
           include: {
             snapshots: {
-              orderBy: { weekStarting: "desc" },
+              orderBy: { date: "desc" },
               take: 1,
             },
           },
         },
+        article: true,
       },
     });
 
-    log.push(
-      `Found ${urls.length} URLs with ${urls.reduce((s, u) => s + u.keywords.length, 0)} active keywords`,
-    );
+    // 5. Filter by frequency tier
+    const toProcess = [];
+    const now = Date.now();
 
-    // const weekStarting = new Date();
-    // weekStarting.setHours(0, 0, 0, 0);
+    for (const loc of locales) {
+      if (loc.stage === "parked") continue;
+      if (loc.keywords.length === 0) continue;
 
-    const weekStarting = new Date();
-    weekStarting.setUTCHours(0, 0, 0, 0); // Use UTC methods
-    // console.log(weekStarting.getUTCDate()); // Will consistently show 15th
+      // Daily: in_progress + in_review
+      if (loc.stage === "in_progress" || loc.stage === "in_review") {
+        toProcess.push(loc);
+        continue;
+      }
 
-    let startDate, endDate;
-    if (getLastWeekRange) {
-      const range = getLastWeekRange();
-      startDate = range.startDate;
-      endDate = range.endDate;
+      // Check last snapshot age
+      const lastSnapshot = loc.keywords[0]?.snapshots?.[0];
+      const daysSince = lastSnapshot
+        ? (now - lastSnapshot.date.getTime()) / (1000 * 60 * 60 * 24)
+        : Infinity;
+
+      // Monitoring: weekly
+      if (loc.stage === "monitoring" && daysSince >= 7) {
+        toProcess.push(loc);
+        continue;
+      }
+
+      // Backlog: monthly
+      if (loc.stage === "backlog" && daysSince >= 30) {
+        toProcess.push(loc);
+        continue;
+      }
     }
 
-    // 3. Process each URL
-    for (const url of urls) {
-      const kwStrings = url.keywords.map((k) => k.keyword);
+    log.push(
+      `Processing ${toProcess.length}/${locales.length} locale variants ` +
+      `(${toProcess.filter(l => l.stage === "in_progress" || l.stage === "in_review").length} daily, ` +
+      `${toProcess.filter(l => l.stage === "monitoring").length} weekly, ` +
+      `${toProcess.filter(l => l.stage === "backlog").length} backlog)`
+    );
 
-      // 3a. Pull DataForSEO positions (PRIMARY SOURCE)
-      let dfsData = {};
+    // 6. Group by (languageCode, countryCode) for efficient batching
+    const batches = {}; // key: "lang:country" -> { keywords: [...], kwMeta: [...] }
 
-      try {
-        dfsData = await batchSerpPositions({
-          keywords: kwStrings,
-          targetDomain,
-          country,
-          language,
-          provider: PROVIDERS.DATAFORSEO,
-        });
+    for (const loc of toProcess) {
+      const lc = localeMap[loc.locale] || { languageCode: "en" };
 
-        log.push(
-          `✓ DataForSEO: ${url.title} — ${Object.keys(dfsData).length} keyword positions`,
-        );
-      } catch (e) {
-        log.push(`✗ DataForSEO ERROR: ${url.title} — ${e.message}`);
-      }
+      for (const kw of loc.keywords) {
+        const countries = (kw.targetCountries || "us").split(",").map(c => c.trim());
 
-      // 3b. Pull GSC data (OPTIONAL - only for traffic metrics)
-      let gscData = {};
-      // if (getSearchAnalytics && startDate && endDate) {
-      //   try {
-      //     const gscResults = await getSearchAnalytics({
-      //       url: url.url,
-      //       startDate,
-      //       endDate,
-      //       keywords: kwStrings,
-      //     });
-      //     for (const r of gscResults) {
-      //       gscData[r.keyword.toLowerCase()] = r;
-      //     }
-      //     log.push(
-      //       `✓ GSC Traffic: ${url.title} — ${gscResults.length} keywords`,
-      //     );
-      //   } catch (e) {
-      //     log.push(`⚠ GSC skipped: ${e.message}`);
-      //   }
-      // } else {
-      //   log.push(`⚠ GSC not configured — traffic data unavailable`);
-      // }
+        for (const country of countries) {
+          const batchKey = `${lc.languageCode}:${country}`;
 
-      // 3c. Write snapshots and detect alerts
-      for (const kw of url.keywords) {
-        const dfs = dfsData[kw.keyword] || {};
-        const gsc = gscData[kw.keyword.toLowerCase()] || {};
-        const prevSnapshot = kw.snapshots?.[0];
+          if (!batches[batchKey]) {
+            batches[batchKey] = {
+              language: lc.languageCode,
+              country,
+              keywords: new Set(),
+              kwMeta: [], // { keyword, keywordId, localeId, prevSnapshot }
+            };
+          }
 
-        // PRIMARY: DataForSEO SERP position
-        const prevPos = prevSnapshot?.serpPosition || null;
-        const currentPos = dfs.position || null;
-        const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
-
-        // Write snapshot (DataForSEO is required, GSC is optional)
-        await prisma.weeklySnapshot.upsert({
-          where: {
-            keywordId_weekStarting: {
-              keywordId: kw.id,
-              weekStarting,
-            },
-          },
-          create: {
+          batches[batchKey].keywords.add(kw.keyword);
+          batches[batchKey].kwMeta.push({
+            keyword: kw.keyword,
             keywordId: kw.id,
-            weekStarting,
-            // PRIMARY: DataForSEO SERP data
-            serpPosition: currentPos,
-            serpFeatures: dfs.serpFeatures?.join(",") || null,
-            prevPosition: prevPos,
-            posChange,
-            // OPTIONAL: GSC traffic data
-            gscPosition: gsc.position || null,
-            gscClicks: gsc.clicks || 0,
-            gscImpressions: gsc.impressions || 0,
-            gscCtr: gsc.ctr || null,
-          },
-          update: {
-            // PRIMARY: DataForSEO SERP data
-            serpPosition: currentPos,
-            serpFeatures: dfs.serpFeatures?.join(",") || null,
-            prevPosition: prevPos,
-            posChange,
-            // OPTIONAL: GSC traffic data
-            gscPosition: gsc.position || null,
-            gscClicks: gsc.clicks || 0,
-            gscImpressions: gsc.impressions || 0,
-            gscCtr: gsc.ctr || null,
-          },
-        });
-
-        // 3d. Detect alerts
-        if (prevPos && currentPos) {
-          const drop = currentPos - prevPos;
-
-          // Left page 1
-          if (prevPos <= 10 && currentPos > 10) {
-            const alert = {
-              keywordId: kw.id,
-              type: "left_page1",
-              severity: "critical",
-              details: `#${prevPos} → #${currentPos}. Lost page 1.`,
-              keyword: kw.keyword,
-              urlTitle: url.title,
-            };
-            await prisma.alert.create({
-              data: {
-                keywordId: alert.keywordId,
-                type: alert.type,
-                severity: alert.severity,
-                details: alert.details,
-              },
-            });
-            newAlerts.critical.push(alert);
-          }
-          // Big drop
-          else if (drop >= alertThreshold) {
-            const severity =
-              drop >= alertThreshold * 2 ? "critical" : "warning";
-            const alert = {
-              keywordId: kw.id,
-              type: "position_drop",
-              severity,
-              details: `#${prevPos} → #${currentPos} (-${drop})`,
-              keyword: kw.keyword,
-              urlTitle: url.title,
-            };
-            await prisma.alert.create({
-              data: {
-                keywordId: alert.keywordId,
-                type: alert.type,
-                severity: alert.severity,
-                details: alert.details,
-              },
-            });
-            newAlerts[severity].push(alert);
-          }
-          // Big gain
-          else if (drop <= -alertThreshold) {
-            const alert = {
-              keywordId: kw.id,
-              type: "recovery",
-              severity: "positive",
-              details: `#${prevPos} → #${currentPos} (+${Math.abs(drop)})`,
-              keyword: kw.keyword,
-              urlTitle: url.title,
-            };
-            await prisma.alert.create({
-              data: {
-                keywordId: alert.keywordId,
-                type: alert.type,
-                severity: alert.severity,
-                details: alert.details,
-              },
-            });
-            newAlerts.positive.push(alert);
-          }
-          // Entered top 3
-          else if (prevPos > 3 && currentPos <= 3) {
-            const alert = {
-              keywordId: kw.id,
-              type: "new_top3",
-              severity: "positive",
-              details: `#${prevPos} → #${currentPos}. Entered top 3! 🎉`,
-              keyword: kw.keyword,
-              urlTitle: url.title,
-            };
-            await prisma.alert.create({
-              data: {
-                keywordId: alert.keywordId,
-                type: alert.type,
-                severity: alert.severity,
-                details: alert.details,
-              },
-            });
-            newAlerts.positive.push(alert);
-          }
-        }
-      }
-
-      // 3e. Auto-discover new keywords from GSC (optional feature)
-      // if (autoAddGsc && getTopQueries && startDate && endDate) {
-      //   try {
-      //     const existingKws = new Set(
-      //       url.keywords.map((k) => k.keyword.toLowerCase()),
-      //     );
-      //     const topQueries = await getTopQueries({
-      //       url: url.url,
-      //       startDate,
-      //       endDate,
-      //       minImpressions: autoAddMinImpr,
-      //     });
-
-      //     let added = 0;
-      //     for (const q of topQueries) {
-      //       if (existingKws.has(q.keyword.toLowerCase())) continue;
-      //       if (url.keywords.length + added >= maxKwPerUrl) break;
-
-      //       await prisma.keyword.create({
-      //         data: {
-      //           urlId: url.id,
-      //           keyword: q.keyword.toLowerCase(),
-      //           source: "gsc",
-      //           intent: "informational",
-      //           tracked: true,
-      //         },
-      //       });
-      //       added++;
-      //     }
-      //     if (added > 0)
-      //       log.push(`✓ Auto-added ${added} keywords for ${url.title}`);
-      //   } catch (e) {
-      //     log.push(`⚠ Auto-discovery skipped: ${e.message}`);
-      //   }
-      // } else if (autoAddGsc) {
-      //   log.push(`⚠ Auto-discovery requires GSC configuration`);
-      // }
-
-      // Update URL status based on trends
-      if (url.keywords.length > 0) {
-        const droppingKws = url.keywords.filter((k) => {
-          const prev = k.snapshots?.[0]?.serpPosition;
-          const curr = dfsData[k.keyword]?.position;
-          return prev && curr && curr - prev >= 3;
-        });
-
-        if (droppingKws.length >= url.keywords.length * 0.5) {
-          await prisma.trackedUrl.update({
-            where: { id: url.id },
-            data: { status: "declining" },
+            localeId: loc.id,
+            prevSnapshot: kw.snapshots?.[0] || null,
           });
         }
       }
     }
 
-    // 4. Send Telegram notification
-    const totalAlerts =
-      newAlerts.critical.length +
-      newAlerts.warning.length +
-      newAlerts.positive.length;
-    if (totalAlerts > 0) {
-      const dashboardUrl = process.env.DASHBOARD_URL || "";
-      const message = formatWeeklyReport({
-        weekDate: weekStarting.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-        critical: newAlerts.critical,
-        warnings: newAlerts.warning,
-        positive: newAlerts.positive,
-        stats: {
-          urlCount: urls.length,
-          kwCount: urls.reduce((s, u) => s + u.keywords.length, 0),
-        },
-        dashboardUrl,
-      });
-      await sendMessage(message);
-      log.push(`Telegram: sent report with ${totalAlerts} alerts`);
-    } else {
-      log.push("No new alerts — skipping Telegram notification");
+    log.push(`Grouped into ${Object.keys(batches).length} language/country batches`);
+
+    // 7. Process each batch
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const weekStarting = new Date(today);
+    // Set to Monday of this week
+    const day = weekStarting.getUTCDay();
+    const diff = day === 0 ? 6 : day - 1;
+    weekStarting.setUTCDate(weekStarting.getUTCDate() - diff);
+
+    const movements = { drops: [], gains: [], top3: [] };
+
+    for (const [batchKey, batch] of Object.entries(batches)) {
+      const uniqueKeywords = [...batch.keywords];
+      const apiCalls = uniqueKeywords.length;
+      totalApiCalls += apiCalls;
+
+      log.push(`Batch ${batchKey}: ${uniqueKeywords.length} unique keywords (${batch.kwMeta.length} total assignments)`);
+
+      let dfsData = {};
+      try {
+        dfsData = await batchSerpPositions({
+          keywords: uniqueKeywords,
+          targetDomain,
+          country: batch.country,
+          language: batch.language,
+          provider: PROVIDERS.DATAFORSEO,
+        });
+      } catch (e) {
+        log.push(`ERROR batch ${batchKey}: ${e.message}`);
+        totalErrors++;
+        continue;
+      }
+
+      // 8. Write snapshots for each keyword assignment in this batch
+      for (const meta of batch.kwMeta) {
+        const dfs = dfsData[meta.keyword] || {};
+        const prevPos = meta.prevSnapshot?.serpPosition || null;
+        const currentPos = dfs.position || null;
+        const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
+
+        try {
+          await prisma.snapshot.upsert({
+            where: {
+              keywordId_countryCode_date: {
+                keywordId: meta.keywordId,
+                countryCode: batch.country,
+                date: today,
+              },
+            },
+            create: {
+              keywordId: meta.keywordId,
+              date: today,
+              weekStarting,
+              countryCode: batch.country,
+              serpPosition: currentPos,
+              serpFeatures: dfs.serpFeatures?.join(",") || null,
+              prevPosition: prevPos,
+              posChange,
+            },
+            update: {
+              serpPosition: currentPos,
+              serpFeatures: dfs.serpFeatures?.join(",") || null,
+              prevPosition: prevPos,
+              posChange,
+            },
+          });
+          totalKeywordsProcessed++;
+
+          // Track notable movements for Telegram
+          // posChange = prevPos - currentPos: positive = improved, negative = worsened
+          if (prevPos && currentPos) {
+            if (posChange <= -alertThreshold) {
+              movements.drops.push({
+                keyword: meta.keyword,
+                country: batch.country,
+                from: prevPos,
+                to: currentPos,
+              });
+            } else if (posChange >= alertThreshold) {
+              movements.gains.push({
+                keyword: meta.keyword,
+                country: batch.country,
+                from: prevPos,
+                to: currentPos,
+              });
+            }
+            if (prevPos > 3 && currentPos <= 3) {
+              movements.top3.push({
+                keyword: meta.keyword,
+                country: batch.country,
+                from: prevPos,
+                to: currentPos,
+              });
+            }
+          }
+        } catch (e) {
+          log.push(`Snapshot error (kw:${meta.keywordId}): ${e.message}`);
+          totalErrors++;
+        }
+      }
     }
 
-    // 5. Archive old weekly data (keep last N weeks detailed)
-    const archiveWeeks = parseInt(cfg.archiveWeeks || "13");
-    const archiveCutoff = new Date();
-    archiveCutoff.setDate(archiveCutoff.getDate() - archiveWeeks * 7);
+    // 9. GSC page-level traffic (free, stored per URL not per keyword)
+    if (!process.env.GSC_CREDENTIALS || !process.env.GSC_PROPERTY) {
+      log.push("GSC: SKIPPED — GSC_CREDENTIALS or GSC_PROPERTY not set");
+    } else {
+      try {
+        const { startDate: gscStart, endDate: gscEnd } = getLastWeekRange();
+        const processedUrls = new Set();
+        let gscCount = 0;
 
-    // console.log(archiveCutoff, "cut off");
+        for (const loc of toProcess) {
+          if (!loc.url || processedUrls.has(loc.id)) continue;
+          processedUrls.add(loc.id);
 
-    // const deleted = await prisma.weeklySnapshot.deleteMany({
-    //   where: { weekStarting: { lt: archiveCutoff } },
-    // });
-    // if (deleted.count > 0) {
-    //   log.push(`Archived: deleted ${deleted.count} old snapshots`);
-    // }
+          try {
+            const traffic = await getPageTraffic({
+              url: loc.url,
+              startDate: gscStart,
+              endDate: gscEnd,
+            });
 
+            if (!traffic) continue;
+
+            await prisma.pageTraffic.upsert({
+              where: { urlId_date: { urlId: loc.id, date: today } },
+              create: {
+                urlId: loc.id,
+                date: today,
+                clicks: traffic.clicks || 0,
+                impressions: traffic.impressions || 0,
+                ctr: traffic.ctr || null,
+                position: traffic.position || null,
+              },
+              update: {
+                clicks: traffic.clicks || 0,
+                impressions: traffic.impressions || 0,
+                ctr: traffic.ctr || null,
+                position: traffic.position || null,
+              },
+            });
+            gscCount++;
+          } catch (gscErr) {
+            log.push(`GSC skip ${loc.locale}: ${gscErr.message}`);
+          }
+        }
+
+        if (gscCount > 0) log.push(`GSC: stored page traffic for ${gscCount} URLs`);
+      } catch (gscGlobalErr) {
+        log.push(`GSC global error: ${gscGlobalErr.message}`);
+      }
+    }
+
+    // 10. Update CronRun
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    log.push(`Done in ${duration}s`);
+    const estimatedCost = totalApiCalls * COST_PER_CALL;
+
+    await prisma.cronRun.update({
+      where: { id: cronRun.id },
+      data: {
+        completedAt: new Date(),
+        apiCalls: totalApiCalls,
+        estimatedCost,
+        keywordsProcessed: totalKeywordsProcessed,
+        errors: totalErrors,
+        status: "completed",
+        log: JSON.stringify(log),
+      },
+    });
+
+    // 11. Send Telegram summary
+    const totalMovements = movements.drops.length + movements.gains.length + movements.top3.length;
+    if (totalMovements > 0) {
+      const lines = [
+        `<b>Ranking Update</b>`,
+        `${toProcess.length} locales | ${totalApiCalls} API calls | $${estimatedCost.toFixed(2)}`,
+        "",
+      ];
+
+      if (movements.drops.length > 0) {
+        lines.push(`<b>Drops (${movements.drops.length}):</b>`);
+        for (const m of movements.drops.slice(0, 10)) {
+          lines.push(`  ${m.keyword} [${m.country.toUpperCase()}]: #${m.from} → #${m.to}`);
+        }
+      }
+
+      if (movements.gains.length > 0) {
+        lines.push(`<b>Gains (${movements.gains.length}):</b>`);
+        for (const m of movements.gains.slice(0, 10)) {
+          lines.push(`  ${m.keyword} [${m.country.toUpperCase()}]: #${m.from} → #${m.to}`);
+        }
+      }
+
+      if (movements.top3.length > 0) {
+        lines.push(`<b>New Top 3:</b>`);
+        for (const m of movements.top3) {
+          lines.push(`  ${m.keyword} [${m.country.toUpperCase()}]: #${m.from} → #${m.to}`);
+        }
+      }
+
+      lines.push("", `Done in ${duration}s`);
+
+      try {
+        await sendMessage(lines.join("\n"));
+      } catch (e) {
+        log.push(`Telegram error: ${e.message}`);
+      }
+    }
+
+    log.push(`Done in ${duration}s | ${totalApiCalls} calls | $${estimatedCost.toFixed(2)}`);
 
     return NextResponse.json({
       ok: true,
       duration: `${duration}s`,
-      alerts: {
-        critical: newAlerts.critical.length,
-        warning: newAlerts.warning.length,
-        positive: newAlerts.positive.length,
+      apiCalls: totalApiCalls,
+      estimatedCost,
+      keywordsProcessed: totalKeywordsProcessed,
+      errors: totalErrors,
+      movements: {
+        drops: movements.drops.length,
+        gains: movements.gains.length,
+        top3: movements.top3.length,
       },
       log,
     });
   } catch (error) {
     log.push(`FATAL ERROR: ${error.message}`);
+
+    await prisma.cronRun.update({
+      where: { id: cronRun.id },
+      data: {
+        completedAt: new Date(),
+        status: "failed",
+        errors: totalErrors + 1,
+        log: JSON.stringify(log),
+      },
+    });
+
     return NextResponse.json(
       { ok: false, error: error.message, log },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

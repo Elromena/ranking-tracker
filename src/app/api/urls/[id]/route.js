@@ -61,15 +61,12 @@ export async function GET(request, { params }) {
         include: {
           snapshots: {
             where: {
-              weekStarting: {
+              date: {
                 gte: startDate,
                 lte: now,
               },
             },
-            orderBy: { weekStarting: "asc" },
-          },
-          alerts: {
-            orderBy: { alertDate: "desc" },
+            orderBy: { date: "asc" },
           },
         },
       },

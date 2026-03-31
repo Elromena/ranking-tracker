@@ -1,54 +1,41 @@
-import {
-  format,
-  isAfter,
-  parseISO,
-  subDays,
-  subMonths,
-  subWeeks,
-} from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useMemo, useState } from "react";
+import {
+  Card,
+  Table,
+  Th,
+  Td,
+  Badge,
+  PositionText,
+  ChangeIndicator,
+  EmptyState,
+} from "@/components/ui";
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
-const SERPDataTable = ({ data, timeRange = "daily" }) => {
+const SERPDataTable = ({ data, timeRange = "daily", startDate, endDate }) => {
   const [sortConfig, setSortConfig] = useState({
     key: "position",
     direction: "asc",
   });
 
-  // Filter snapshots based on time range
   const getFilteredSnapshots = (keyword) => {
-    const now = new Date();
-    let cutoffDate;
-
-    switch (timeRange) {
-      case "daily":
-        cutoffDate = subDays(now, 1);
-        break;
-      case "weekly":
-        cutoffDate = subWeeks(now, 7);
-        break;
-      case "monthly":
-        cutoffDate = subMonths(now, 30);
-        break;
-      default:
-        cutoffDate = subDays(now, 1);
-    }
-
-    return keyword.snapshots.filter((snapshot) =>
-      isAfter(parseISO(snapshot.weekStarting), cutoffDate),
-    );
+    return keyword.snapshots.filter((snapshot) => {
+      const d = parseISO(snapshot.date || snapshot.weekStarting);
+      return d >= startDate && d <= endDate;
+    });
   };
 
-  // Get the latest snapshot for each keyword within the time range
   const getLatestSnapshot = (keyword) => {
     const filteredSnapshots = getFilteredSnapshots(keyword);
     return (
       filteredSnapshots.sort(
-        (a, b) => new Date(b.weekStarting) - new Date(a.weekStarting),
+        (a, b) =>
+          new Date(b.date || b.weekStarting) -
+          new Date(a.date || a.weekStarting)
       )[0] || keyword.snapshots[0]
-    ); // Fallback to first if none in range
+    );
   };
 
-  // Calculate average position for the time range
   const getAveragePosition = (keyword) => {
     const filteredSnapshots = getFilteredSnapshots(keyword);
     const positions = filteredSnapshots
@@ -58,10 +45,11 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
     return Math.round(positions.reduce((a, b) => a + b, 0) / positions.length);
   };
 
-  // Calculate trend (improving/declining)
   const getTrend = (keyword) => {
     const filteredSnapshots = getFilteredSnapshots(keyword).sort(
-      (a, b) => new Date(a.weekStarting) - new Date(b.weekStarting),
+      (a, b) =>
+        new Date(a.date || a.weekStarting) -
+        new Date(b.date || b.weekStarting)
     );
 
     if (filteredSnapshots.length < 2) return null;
@@ -70,10 +58,9 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
     const last = filteredSnapshots[filteredSnapshots.length - 1].serpPosition;
 
     if (!first || !last) return null;
-    return last - first; // Negative means improving (lower number = better)
+    return last - first;
   };
 
-  // Process keywords with time-range data
   const processedKeywords = useMemo(() => {
     return (data.keywords || [])
       .filter((k) => k.tracked)
@@ -92,7 +79,6 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
       });
   }, [data, timeRange]);
 
-  // Sorting function
   const sortedKeywords = useMemo(() => {
     const sortableKeywords = [...processedKeywords];
 
@@ -112,6 +98,10 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
           aVal = a.avgPosition || 999;
           bVal = b.avgPosition || 999;
           break;
+        case "prev":
+          aVal = a.latestSnapshot?.prevPosition || 999;
+          bVal = b.latestSnapshot?.prevPosition || 999;
+          break;
         case "change":
           aVal = a.latestSnapshot?.posChange || 0;
           bVal = b.latestSnapshot?.posChange || 0;
@@ -119,18 +109,6 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
         case "trend":
           aVal = a.trend || 0;
           bVal = b.trend || 0;
-          break;
-        case "clicks":
-          aVal = a.latestSnapshot?.gscClicks || 0;
-          bVal = b.latestSnapshot?.gscClicks || 0;
-          break;
-        case "impressions":
-          aVal = a.latestSnapshot?.gscImpressions || 0;
-          bVal = b.latestSnapshot?.gscImpressions || 0;
-          break;
-        case "ctr":
-          aVal = a.latestSnapshot?.gscCtr || 0;
-          bVal = b.latestSnapshot?.gscCtr || 0;
           break;
         default:
           return 0;
@@ -155,41 +133,8 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
   };
 
   const getSortIndicator = (key) => {
-    if (sortConfig.key !== key) return " ↕️";
+    if (sortConfig.key !== key) return " ↕";
     return sortConfig.direction === "asc" ? " ↑" : " ↓";
-  };
-
-  // Dynamic headers based on time range
-  const getHeaders = () => {
-    const baseHeaders = [
-      { key: "keyword", label: "Keyword" },
-      {
-        key: "position",
-        label: timeRange === "daily" ? "Position" : "Latest Pos",
-      },
-    ];
-
-    if (timeRange !== "daily") {
-      baseHeaders.push({ key: "avgPosition", label: "Avg Position" });
-    }
-
-    baseHeaders.push(
-      { key: "prev", label: "Previous" },
-      { key: "change", label: "Change" },
-    );
-
-    if (timeRange !== "daily") {
-      baseHeaders.push({ key: "trend", label: "Trend" });
-    }
-
-    baseHeaders.push(
-      { key: "clicks", label: "Clicks" },
-      { key: "impressions", label: "Impressions" },
-      { key: "ctr", label: "CTR" },
-      { key: "features", label: "Features" },
-    );
-
-    return baseHeaders;
   };
 
   const formatNumber = (num) => {
@@ -199,283 +144,133 @@ const SERPDataTable = ({ data, timeRange = "daily" }) => {
     return num.toString();
   };
 
-  const getChangeColor = (change) => {
-    if (change > 0) return "#059669"; // Green for positive
-    if (change < 0) return "#dc2626"; // Red for negative
-    return "#94a3b8"; // Gray for no change
+  const TrendIndicator = ({ trend }) => {
+    if (trend === null) return <span className="text-slate-300">—</span>;
+    if (trend < 0) {
+      return (
+        <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+          <TrendingUp size={12} /> Improving
+        </span>
+      );
+    }
+    if (trend > 0) {
+      return (
+        <span className="flex items-center gap-1 text-red-600 font-semibold">
+          <TrendingDown size={12} /> Declining
+        </span>
+      );
+    }
+    return (
+      <span className="flex items-center gap-1 text-slate-400 font-semibold">
+        <Minus size={12} /> Stable
+      </span>
+    );
   };
 
-  const getTrendIcon = (trend) => {
-    if (trend === null) return "—";
-    if (trend < 0) return "📈 Improving";
-    if (trend > 0) return "📉 Declining";
-    return "➡️ Stable";
-  };
+  const headers = [
+    { key: "keyword", label: "Keyword" },
+    { key: "position", label: timeRange === "daily" ? "Position" : "Latest Pos" },
+    ...(timeRange !== "daily" ? [{ key: "avgPosition", label: "Avg Position" }] : []),
+    { key: "prev", label: "Previous" },
+    { key: "change", label: "Change" },
+    ...(timeRange !== "daily" ? [{ key: "trend", label: "Trend" }] : []),
+    { key: "features", label: "Features" },
+  ];
 
   return (
-    <div>
-      {/* Time range indicator and record count */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-          fontSize: 11,
-          color: "#64748b",
-        }}
-      >
-        <span>
-          Showing data for: <strong>{timeRange}</strong> view
+    <Card className="p-0 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+        <span className="text-xs text-slate-500">
+          Showing: <span className="font-semibold text-slate-700">{timeRange}</span> view
         </span>
-        <span>
-          {sortedKeywords.length} keywords tracked • Last updated:{" "}
-          {format(new Date(), "d MMM, HH:mm")}
+        <span className="text-xs text-slate-400">
+          {sortedKeywords.length} keywords · Updated {format(new Date(), "d MMM, HH:mm")}
         </span>
       </div>
 
       {/* Table */}
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          overflow: "auto",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          maxHeight: "600px",
-        }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 11,
-            minWidth: "1000px",
-          }}
-        >
-          <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
-            <tr style={{ background: "#f8fafc" }}>
-              {getHeaders().map((h) => (
-                <th
-                  key={h.key}
-                  onClick={() => requestSort(h.key)}
-                  style={{
-                    padding: "10px 8px",
-                    textAlign: "left",
-                    fontWeight: 600,
-                    color: "#475569",
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.3,
-                    borderBottom: "2px solid #e2e8f0",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    userSelect: "none",
-                  }}
-                >
-                  {h.label}
-                  <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 2 }}>
-                    {getSortIndicator(h.key)}
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedKeywords.map((kw, i) => {
-              const latest = kw.latestSnapshot;
-              if (!latest) return null;
+      <Table>
+        <thead>
+          <tr className="bg-slate-50/50">
+            {headers.map((h) => (
+              <Th
+                key={h.key}
+                className="cursor-pointer select-none whitespace-nowrap"
+                onClick={() => requestSort(h.key)}
+              >
+                {h.label}
+                <span className="text-[9px] opacity-50 ml-1">
+                  {getSortIndicator(h.key)}
+                </span>
+              </Th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedKeywords.map((kw) => {
+            const latest = kw.latestSnapshot;
+            if (!latest) return null;
 
-              const pos = latest.serpPosition;
-              const prev = latest.prevPosition;
-              const chg = latest.posChange || 0;
-              const avgPos = kw.avgPosition;
-              const trend = kw.trend;
+            const pos = latest.serpPosition;
+            const prev = latest.prevPosition;
+            const chg = latest.posChange || 0;
 
-              return (
-                <tr
-                  key={kw.id}
-                  style={{
-                    borderBottom: "1px solid #f1f5f9",
-                    background: i % 2 === 0 ? "#fff" : "#fafbfc",
-                    fontSize: 11,
-                  }}
-                >
-                  {/* Keyword */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontWeight: 500,
-                      maxWidth: "200px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {kw.keyword}
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 9,
-                        color: "#94a3b8",
-                        background: "#f1f5f9",
-                        padding: "2px 4px",
-                        borderRadius: 4,
-                      }}
-                    >
+            return (
+              <tr key={kw.id}>
+                {/* Keyword */}
+                <Td className="font-medium max-w-[220px]">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate">{kw.keyword}</span>
+                    <Badge className="text-[9px] shrink-0">
                       {kw.snapshotsInRange} rec
-                    </span>
-                  </td>
+                    </Badge>
+                  </div>
+                </Td>
 
-                  {/* Position / Latest Position */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontWeight: 600,
-                      fontSize: 11,
-                      color:
-                        pos && pos <= 3
-                          ? "#059669"
-                          : pos && pos <= 10
-                            ? "#0f172a"
-                            : pos && pos <= 20
-                              ? "#b45309"
-                              : "#dc2626",
-                    }}
-                  >
-                    {pos ? `#${pos}` : "—"}
-                  </td>
+                {/* Position */}
+                <Td>
+                  <PositionText position={pos} />
+                </Td>
 
-                  {/* Average Position (for weekly/monthly) */}
-                  {timeRange !== "daily" && (
-                    <td
-                      style={{
-                        padding: "8px 8px",
-                        fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                        fontSize: 11,
-                        color: "#64748b",
-                      }}
-                    >
-                      {avgPos ? `#${avgPos}` : "—"}
-                    </td>
-                  )}
+                {/* Avg Position (weekly/monthly) */}
+                {timeRange !== "daily" && (
+                  <Td className="font-mono text-xs text-slate-500">
+                    {kw.avgPosition ? `#${kw.avgPosition}` : "—"}
+                  </Td>
+                )}
 
-                  {/* Previous Position */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontSize: 11,
-                      color: "#94a3b8",
-                    }}
-                  >
-                    {prev ? `#${prev}` : "—"}
-                  </td>
+                {/* Previous */}
+                <Td className="font-mono text-xs text-slate-400">
+                  {prev ? `#${prev}` : "—"}
+                </Td>
 
-                  {/* Change */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontWeight: 600,
-                      fontSize: 11,
-                      color: getChangeColor(chg),
-                    }}
-                  >
-                    {chg > 0 ? "+" : ""}
-                    {chg || 0}
-                  </td>
+                {/* Change */}
+                <Td>
+                  <ChangeIndicator change={chg} />
+                </Td>
 
-                  {/* Trend (for weekly/monthly) */}
-                  {timeRange !== "daily" && (
-                    <td
-                      style={{
-                        padding: "8px 8px",
-                        fontSize: 11,
-                        color:
-                          trend < 0
-                            ? "#059669"
-                            : trend > 0
-                              ? "#dc2626"
-                              : "#64748b",
-                      }}
-                    >
-                      {getTrendIcon(trend)}
-                    </td>
-                  )}
+                {/* Trend (weekly/monthly) */}
+                {timeRange !== "daily" && (
+                  <Td className="text-xs">
+                    <TrendIndicator trend={kw.trend} />
+                  </Td>
+                )}
 
-                  {/* Clicks */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontSize: 11,
-                      fontWeight: latest.gscClicks > 0 ? 600 : 400,
-                    }}
-                  >
-                    {formatNumber(latest.gscClicks)}
-                  </td>
+                {/* Features */}
+                <Td className="text-[10px] text-slate-500 max-w-[120px] truncate">
+                  {latest.serpFeatures || "—"}
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
 
-                  {/* Impressions */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontSize: 11,
-                      color: "#64748b",
-                    }}
-                  >
-                    {formatNumber(latest.gscImpressions)}
-                  </td>
-
-                  {/* CTR */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-                      fontSize: 11,
-                    }}
-                  >
-                    {latest.gscCtr
-                      ? (latest.gscCtr * 100).toFixed(1) + "%"
-                      : "—"}
-                  </td>
-
-                  {/* Features */}
-                  <td
-                    style={{
-                      padding: "8px 8px",
-                      fontSize: 10,
-                      color: "#64748b",
-                      maxWidth: "120px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {latest.serpFeatures || "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Empty state */}
-        {sortedKeywords.length === 0 && (
-          <div
-            style={{
-              padding: 40,
-              textAlign: "center",
-              color: "#94a3b8",
-              fontSize: 12,
-            }}
-          >
-            No keywords tracked in this time range
-          </div>
-        )}
-      </div>
-    </div>
+      {sortedKeywords.length === 0 && (
+        <EmptyState message="No keywords tracked in this time range" />
+      )}
+    </Card>
   );
 };
 
