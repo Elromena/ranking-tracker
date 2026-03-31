@@ -13,6 +13,7 @@ import {
   Calendar,
   Clock,
   ExternalLink,
+  Zap,
 } from "lucide-react";
 import {
   Button,
@@ -65,6 +66,8 @@ export default function ArticleDetailView({
   const [dateRange, setDateRange] = useState(30);
   const [country, setCountry] = useState(null);
   const [chartMetrics, setChartMetrics] = useState({});
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
 
   // Date range picker state
   const [startDate, setStartDate] = useState(() => {
@@ -113,6 +116,22 @@ export default function ArticleDetailView({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const checkRankings = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const result = await api(`/articles/${articleId}/check-rankings`, {
+        method: "POST",
+      });
+      setCheckResult(result);
+      fetchData();
+    } catch (err) {
+      setCheckResult({ ok: false, error: err.message });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const locales = data?.locales || [];
   const currentLocale =
@@ -396,6 +415,16 @@ export default function ArticleDetailView({
             Edit
           </Button>
           <Button
+            variant="secondary"
+            size="sm"
+            onClick={checkRankings}
+            disabled={checking}
+            className="gap-1.5"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            {checking ? "Checking..." : "Check Rankings"}
+          </Button>
+          <Button
             variant="ghost"
             size="sm"
             onClick={onRefresh || fetchData}
@@ -416,6 +445,29 @@ export default function ArticleDetailView({
           </Button>
         </div>
       </div>
+
+      {/* Check Rankings Result Banner */}
+      {checkResult && (
+        <div
+          className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm ${
+            checkResult.ok
+              ? "bg-green-50 border border-green-200 text-green-800"
+              : "bg-red-50 border border-red-200 text-red-800"
+          }`}
+        >
+          <span>
+            {checkResult.ok
+              ? `Checked ${checkResult.keywordsProcessed} keywords in ${checkResult.duration} (${checkResult.estimatedCost})`
+              : `Error: ${checkResult.error}`}
+          </span>
+          <button
+            onClick={() => setCheckResult(null)}
+            className="text-current opacity-60 hover:opacity-100"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Article Header Card */}
       <Card className="p-5">

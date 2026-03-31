@@ -1,0 +1,219 @@
+import { batchSerpPositions, PROVIDERS } from "@/lib/dataforseo";
+import { prisma } from "@/lib/db";
+import { getPageTraffic, getLastWeekRange } from "@/lib/gsc";
+import { NextResponse } from "next/server";
+
+const COST_PER_CALL = 0.0025;
+
+/**
+ * POST /api/articles/[id]/check-rankings
+ * Manually trigger a ranking check for all locales of a specific article.
+ * Bypasses the stage-based frequency filter — always checks immediately.
+ */
+export async function POST(request, { params }) {
+  const articleId = parseInt(params.id);
+  if (isNaN(articleId)) {
+    return NextResponse.json({ error: "Invalid article ID" }, { status: 400 });
+  }
+
+  const startTime = Date.now();
+  const log = [];
+  let totalApiCalls = 0;
+  let totalKeywordsProcessed = 0;
+  let totalErrors = 0;
+
+  try {
+    const configs = await prisma.config.findMany();
+    const cfg = {};
+    for (const c of configs) cfg[c.key] = c.value;
+
+    const rawDomain = cfg.targetDomain;
+    if (!rawDomain) {
+      return NextResponse.json(
+        { error: "Target domain not configured. Set it in Settings." },
+        { status: 400 }
+      );
+    }
+    const targetDomain = rawDomain
+      .replace("sc-domain:", "")
+      .replace("https://", "")
+      .replace("http://", "")
+      .replace("www.", "")
+      .replace(/\/$/, "");
+
+    const localeConfigs = await prisma.localeConfig.findMany({ where: { enabled: true } });
+    const localeMap = {};
+    for (const lc of localeConfigs) localeMap[lc.locale] = lc;
+
+    const locales = await prisma.trackedUrl.findMany({
+      where: { articleId, trackingEnabled: true },
+      include: {
+        keywords: {
+          where: { tracked: true },
+          include: {
+            snapshots: { orderBy: { date: "desc" }, take: 1 },
+          },
+        },
+        article: true,
+      },
+    });
+
+    if (locales.length === 0) {
+      return NextResponse.json(
+        { error: "No active locales found for this article" },
+        { status: 404 }
+      );
+    }
+
+    log.push(`Checking ${locales.length} locale(s) for "${locales[0]?.article?.title}"`);
+
+    const batches = {};
+    for (const loc of locales) {
+      const lc = localeMap[loc.locale] || { languageCode: "en" };
+      for (const kw of loc.keywords) {
+        const countries = (kw.targetCountries || "us").split(",").map((c) => c.trim());
+        for (const country of countries) {
+          const batchKey = `${lc.languageCode}:${country}`;
+          if (!batches[batchKey]) {
+            batches[batchKey] = {
+              language: lc.languageCode,
+              country,
+              keywords: new Set(),
+              kwMeta: [],
+            };
+          }
+          batches[batchKey].keywords.add(kw.keyword);
+          batches[batchKey].kwMeta.push({
+            keyword: kw.keyword,
+            keywordId: kw.id,
+            localeId: loc.id,
+            prevSnapshot: kw.snapshots?.[0] || null,
+          });
+        }
+      }
+    }
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const weekStarting = new Date(today);
+    const day = weekStarting.getUTCDay();
+    const diff = day === 0 ? 6 : day - 1;
+    weekStarting.setUTCDate(weekStarting.getUTCDate() - diff);
+
+    for (const [batchKey, batch] of Object.entries(batches)) {
+      const uniqueKeywords = [...batch.keywords];
+      totalApiCalls += uniqueKeywords.length;
+
+      let dfsData = {};
+      try {
+        dfsData = await batchSerpPositions({
+          keywords: uniqueKeywords,
+          targetDomain,
+          country: batch.country,
+          language: batch.language,
+          provider: PROVIDERS.DATAFORSEO,
+        });
+      } catch (e) {
+        log.push(`ERROR batch ${batchKey}: ${e.message}`);
+        totalErrors++;
+        continue;
+      }
+
+      for (const meta of batch.kwMeta) {
+        const dfs = dfsData[meta.keyword] || {};
+        const prevPos = meta.prevSnapshot?.serpPosition || null;
+        const currentPos = dfs.position || null;
+        const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
+
+        try {
+          await prisma.snapshot.upsert({
+            where: {
+              keywordId_countryCode_date: {
+                keywordId: meta.keywordId,
+                countryCode: batch.country,
+                date: today,
+              },
+            },
+            create: {
+              keywordId: meta.keywordId,
+              date: today,
+              weekStarting,
+              countryCode: batch.country,
+              serpPosition: currentPos,
+              serpFeatures: dfs.serpFeatures?.join(",") || null,
+              prevPosition: prevPos,
+              posChange,
+            },
+            update: {
+              serpPosition: currentPos,
+              serpFeatures: dfs.serpFeatures?.join(",") || null,
+              prevPosition: prevPos,
+              posChange,
+            },
+          });
+          totalKeywordsProcessed++;
+        } catch (e) {
+          log.push(`Snapshot error (kw:${meta.keywordId}): ${e.message}`);
+          totalErrors++;
+        }
+      }
+    }
+
+    // GSC page-level traffic
+    if (process.env.GSC_CREDENTIALS && process.env.GSC_PROPERTY) {
+      try {
+        const { startDate: gscStart, endDate: gscEnd } = getLastWeekRange();
+        for (const loc of locales) {
+          if (!loc.url) continue;
+          try {
+            const traffic = await getPageTraffic({
+              url: loc.url,
+              startDate: gscStart,
+              endDate: gscEnd,
+            });
+            if (!traffic) continue;
+            await prisma.pageTraffic.upsert({
+              where: { urlId_date: { urlId: loc.id, date: today } },
+              create: {
+                urlId: loc.id,
+                date: today,
+                clicks: traffic.clicks || 0,
+                impressions: traffic.impressions || 0,
+                ctr: traffic.ctr || null,
+                position: traffic.position || null,
+              },
+              update: {
+                clicks: traffic.clicks || 0,
+                impressions: traffic.impressions || 0,
+                ctr: traffic.ctr || null,
+                position: traffic.position || null,
+              },
+            });
+          } catch (gscErr) {
+            log.push(`GSC skip ${loc.locale}: ${gscErr.message}`);
+          }
+        }
+      } catch (gscErr) {
+        log.push(`GSC error: ${gscErr.message}`);
+      }
+    }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    const estimatedCost = totalApiCalls * COST_PER_CALL;
+
+    return NextResponse.json({
+      ok: true,
+      duration: `${duration}s`,
+      apiCalls: totalApiCalls,
+      keywordsProcessed: totalKeywordsProcessed,
+      estimatedCost: `$${estimatedCost.toFixed(4)}`,
+      errors: totalErrors,
+      log,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error.message, log },
+      { status: 500 }
+    );
+  }
+}
