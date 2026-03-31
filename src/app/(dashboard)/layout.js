@@ -9,6 +9,7 @@ import {
   DollarSign,
   Settings,
   LayoutGrid,
+  BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const nav = [
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/cost", label: "Cost & Usage", icon: DollarSign },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/guide", label: "Guide", icon: BookOpen },
 ];
 
 const STORAGE_KEY = "sidebar-collapsed";
