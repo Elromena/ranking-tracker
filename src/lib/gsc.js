@@ -23,12 +23,24 @@ function getClient() {
  * Get page-level traffic for a URL (total clicks, impressions, CTR, position).
  * Uses 'page' dimension with no query breakdown — this is the correct way to
  * measure a page's overall traffic since it includes ALL queries, not just tracked ones.
+ *
+ * Uses 'contains' with the URL path to handle www/non-www and protocol variants.
+ * If multiple rows match, sums clicks/impressions and averages position/CTR.
  */
 export async function getPageTraffic({ url, startDate, endDate }) {
   const client = getClient();
   const siteUrl = process.env.GSC_PROPERTY;
 
   if (!siteUrl) throw new Error('GSC_PROPERTY not set');
+
+  // Extract the path from the URL to avoid www/non-www mismatch
+  let urlPath;
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    urlPath = parsed.pathname;
+  } catch {
+    urlPath = url;
+  }
 
   try {
     const response = await client.searchanalytics.query({
@@ -40,24 +52,34 @@ export async function getPageTraffic({ url, startDate, endDate }) {
         dimensionFilterGroups: [{
           filters: [{
             dimension: 'page',
-            operator: 'equals',
-            expression: url,
+            operator: 'contains',
+            expression: urlPath,
           }],
         }],
-        rowLimit: 1,
+        rowLimit: 10,
       },
     });
 
     const rows = response.data.rows || [];
     if (rows.length === 0) return null;
 
-    const row = rows[0];
+    // Sum across all matching URL variants (www, non-www, trailing slash, etc.)
+    let totalClicks = 0;
+    let totalImpressions = 0;
+    let weightedPosition = 0;
+
+    for (const row of rows) {
+      totalClicks += row.clicks;
+      totalImpressions += row.impressions;
+      weightedPosition += row.position * row.impressions;
+    }
+
     return {
-      url: row.keys[0],
-      clicks: row.clicks,
-      impressions: row.impressions,
-      ctr: row.ctr,
-      position: row.position,
+      url: rows[0].keys[0],
+      clicks: totalClicks,
+      impressions: totalImpressions,
+      ctr: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
+      position: totalImpressions > 0 ? weightedPosition / totalImpressions : null,
     };
   } catch (error) {
     throw new Error(`GSC API error for ${url}: ${error.message}`);
@@ -74,6 +96,14 @@ export async function getTopQueries({ url, startDate, endDate, minImpressions = 
 
   if (!siteUrl) throw new Error('GSC_PROPERTY not set');
 
+  let urlPath;
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    urlPath = parsed.pathname;
+  } catch {
+    urlPath = url;
+  }
+
   const response = await client.searchanalytics.query({
     siteUrl,
     requestBody: {
@@ -83,8 +113,8 @@ export async function getTopQueries({ url, startDate, endDate, minImpressions = 
       dimensionFilterGroups: [{
         filters: [{
           dimension: 'page',
-          operator: 'equals',
-          expression: url,
+          operator: 'contains',
+          expression: urlPath,
         }],
       }],
       rowLimit: 500,
