@@ -34,6 +34,7 @@ import { stageCfg, STAGES, noteTypeCfg, localeFlags } from "@/lib/utils";
 import DateRangePicker from "@/components/ui/date-range-picker";
 import SERPRankingChart from "./graph-rep";
 import SERPDataTable from "./keywords-graph";
+import SerpLandscape from "./serp-landscape";
 
 const NOTE_DOT_COLORS = {
   change: "bg-blue-500",
@@ -372,6 +373,7 @@ export default function ArticleDetailView({
     const tabs = [
       { key: "overview", label: "Overview" },
       { key: "keywords", label: "Keywords" },
+      { key: "serp", label: "SERP Landscape" },
       { key: "notes", label: "Change Log" },
     ];
     if (isAllLocales) tabs.push({ key: "heatmap", label: "Locale Heatmap" });
@@ -786,12 +788,86 @@ export default function ArticleDetailView({
               </div>
             </Card>
           )}
+
+          {/* Cannibalization Warning */}
+          {(() => {
+            const cannibalizationData = [];
+            for (const kw of displayKeywords) {
+              const snap = kw.snapshots?.[0];
+              if (!snap?.otherUrls) continue;
+              try {
+                const others = JSON.parse(snap.otherUrls);
+                if (Array.isArray(others) && others.length > 0) {
+                  for (const o of others) {
+                    cannibalizationData.push({
+                      keyword: kw.keyword,
+                      url: o.url,
+                      position: o.position,
+                      date: snap.date,
+                    });
+                  }
+                }
+              } catch { /* ignore invalid JSON */ }
+            }
+            if (cannibalizationData.length === 0) return null;
+
+            return (
+              <Card className="p-5 border-amber-200 bg-amber-50/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <h3 className="text-sm font-bold text-amber-900">
+                    Other pages from your domain found ranking
+                  </h3>
+                </div>
+                <p className="text-xs text-amber-700 mb-3">
+                  These URLs from your domain are ranking for the same keywords, which may indicate cannibalization.
+                </p>
+                <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                  <Table>
+                    <thead>
+                      <tr className="bg-amber-50">
+                        <Th>Keyword</Th>
+                        <Th>Other URL</Th>
+                        <Th className="w-20 text-right">Position</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cannibalizationData.slice(0, 20).map((row, i) => (
+                        <tr key={i} className="border-t border-amber-100">
+                          <Td className="text-xs font-medium text-slate-700">{row.keyword}</Td>
+                          <Td className="text-xs text-blue-700 truncate max-w-[300px]">
+                            <a href={row.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                              {row.url}
+                            </a>
+                          </Td>
+                          <Td className="text-xs font-mono font-bold text-right text-slate-900">#{row.position}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                  {cannibalizationData.length > 20 && (
+                    <div className="px-4 py-2 text-xs text-amber-600 bg-amber-50 border-t border-amber-200">
+                      +{cannibalizationData.length - 20} more
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })()}
         </div>
       )}
 
       {/* ── Keywords Tab ── */}
       {tab === "keywords" && (
         <SERPDataTable data={chartData} timeRange={viewMode} startDate={startDate} endDate={endDate} />
+      )}
+
+      {/* ── SERP Landscape Tab ── */}
+      {tab === "serp" && (
+        <SerpLandscape
+          articleId={articleId}
+          keywords={displayKeywords.map((kw) => ({ id: kw.id, keyword: kw.keyword }))}
+        />
       )}
 
       {/* ── Change Log Tab ── */}

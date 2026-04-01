@@ -125,7 +125,7 @@ export async function POST(request) {
     );
 
     // 6. Group by (languageCode, countryCode) for efficient batching
-    const batches = {}; // key: "lang:country" -> { keywords: [...], kwMeta: [...] }
+    const batches = {};
 
     for (const loc of toProcess) {
       const lc = localeMap[loc.locale] || { languageCode: "en" };
@@ -141,7 +141,7 @@ export async function POST(request) {
               language: lc.languageCode,
               country,
               keywords: new Set(),
-              kwMeta: [], // { keyword, keywordId, localeId, prevSnapshot }
+              kwMeta: [],
             };
           }
 
@@ -150,6 +150,7 @@ export async function POST(request) {
             keyword: kw.keyword,
             keywordId: kw.id,
             localeId: loc.id,
+            articleUrl: loc.url,
             prevSnapshot: kw.snapshots?.[0] || null,
           });
         }
@@ -176,6 +177,9 @@ export async function POST(request) {
 
       log.push(`Batch ${batchKey}: ${uniqueKeywords.length} unique keywords (${batch.kwMeta.length} total assignments)`);
 
+      // Use the first locale's URL as articleUrl for the batch
+      const firstArticleUrl = batch.kwMeta[0]?.articleUrl || null;
+
       let dfsData = {};
       try {
         dfsData = await batchSerpPositions({
@@ -183,6 +187,7 @@ export async function POST(request) {
           targetDomain,
           country: batch.country,
           language: batch.language,
+          articleUrl: firstArticleUrl,
           provider: PROVIDERS.DATAFORSEO,
         });
       } catch (e) {
@@ -191,7 +196,7 @@ export async function POST(request) {
         continue;
       }
 
-      // 8. Write snapshots for each keyword assignment in this batch
+      // 8. Write snapshots + SERP landscape data for each keyword assignment
       for (const meta of batch.kwMeta) {
         const dfs = dfsData[meta.keyword] || {};
         const prevPos = meta.prevSnapshot?.serpPosition || null;
@@ -199,7 +204,7 @@ export async function POST(request) {
         const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
 
         try {
-          await prisma.snapshot.upsert({
+          const snapshot = await prisma.snapshot.upsert({
             where: {
               keywordId_countryCode_date: {
                 keywordId: meta.keywordId,
@@ -216,41 +221,44 @@ export async function POST(request) {
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
+              foundUrl: dfs.foundUrl || null,
+              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
             },
             update: {
               serpPosition: currentPos,
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
+              foundUrl: dfs.foundUrl || null,
+              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
             },
           });
           totalKeywordsProcessed++;
 
+          // Save top-20 SERP results for landscape comparison
+          if (dfs.top20?.length > 0) {
+            await prisma.serpResult.deleteMany({ where: { snapshotId: snapshot.id } });
+            await prisma.serpResult.createMany({
+              data: dfs.top20.map((item) => ({
+                snapshotId: snapshot.id,
+                rank: item.rank,
+                type: item.type,
+                url: item.url,
+                domain: item.domain,
+                title: item.title,
+              })),
+            });
+          }
+
           // Track notable movements for Telegram
-          // posChange = prevPos - currentPos: positive = improved, negative = worsened
           if (prevPos && currentPos) {
             if (posChange <= -alertThreshold) {
-              movements.drops.push({
-                keyword: meta.keyword,
-                country: batch.country,
-                from: prevPos,
-                to: currentPos,
-              });
+              movements.drops.push({ keyword: meta.keyword, country: batch.country, from: prevPos, to: currentPos });
             } else if (posChange >= alertThreshold) {
-              movements.gains.push({
-                keyword: meta.keyword,
-                country: batch.country,
-                from: prevPos,
-                to: currentPos,
-              });
+              movements.gains.push({ keyword: meta.keyword, country: batch.country, from: prevPos, to: currentPos });
             }
             if (prevPos > 3 && currentPos <= 3) {
-              movements.top3.push({
-                keyword: meta.keyword,
-                country: batch.country,
-                from: prevPos,
-                to: currentPos,
-              });
+              movements.top3.push({ keyword: meta.keyword, country: batch.country, from: prevPos, to: currentPos });
             }
           }
         } catch (e) {

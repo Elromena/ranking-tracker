@@ -110,12 +110,12 @@ async function main() {
 
   // ── 5. Add columns to tracked_urls (IF NOT EXISTS) ──
   const tuCols = [
-    { name: 'locale',            sql: `ALTER TABLE "tracked_urls" ADD COLUMN "locale" TEXT NOT NULL DEFAULT 'en'` },
-    { name: 'tracking_enabled',  sql: `ALTER TABLE "tracked_urls" ADD COLUMN "tracking_enabled" BOOLEAN NOT NULL DEFAULT true` },
-    { name: 'stage',             sql: `ALTER TABLE "tracked_urls" ADD COLUMN "stage" TEXT NOT NULL DEFAULT 'monitoring'` },
+    { name: 'locale', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "locale" TEXT NOT NULL DEFAULT 'en'` },
+    { name: 'tracking_enabled', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "tracking_enabled" BOOLEAN NOT NULL DEFAULT true` },
+    { name: 'stage', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "stage" TEXT NOT NULL DEFAULT 'monitoring'` },
     { name: 'review_started_at', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "review_started_at" TIMESTAMP(3)` },
-    { name: 'review_days',       sql: `ALTER TABLE "tracked_urls" ADD COLUMN "review_days" INTEGER NOT NULL DEFAULT 21` },
-    { name: 'article_id',        sql: `ALTER TABLE "tracked_urls" ADD COLUMN "article_id" INTEGER` },
+    { name: 'review_days', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "review_days" INTEGER NOT NULL DEFAULT 21` },
+    { name: 'article_id', sql: `ALTER TABLE "tracked_urls" ADD COLUMN "article_id" INTEGER` },
   ];
   for (const col of tuCols) {
     const exists = await client.query(`
@@ -180,7 +180,43 @@ async function main() {
   await run('Index on weekly_snapshots(pos_change, date)', `CREATE INDEX IF NOT EXISTS "weekly_snapshots_pos_change_date_idx" ON "weekly_snapshots"("pos_change", "date")`);
   await run('Index on weekly_snapshots(serp_position, date)', `CREATE INDEX IF NOT EXISTS "weekly_snapshots_serp_position_date_idx" ON "weekly_snapshots"("serp_position", "date")`);
 
-  // ── 8. Add type column to notes ──
+  // ── 8. SERP landscape columns on weekly_snapshots ──
+  const serpLandscapeCols = [
+    { name: 'found_url', sql: `ALTER TABLE "weekly_snapshots" ADD COLUMN "found_url" TEXT` },
+    { name: 'other_urls', sql: `ALTER TABLE "weekly_snapshots" ADD COLUMN "other_urls" TEXT` },
+  ];
+  for (const col of serpLandscapeCols) {
+    const exists = await client.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'weekly_snapshots' AND column_name = $1
+    `, [col.name]);
+    if (exists.rowCount === 0) {
+      await run(`Add weekly_snapshots.${col.name}`, col.sql);
+    } else {
+      console.log(`  – weekly_snapshots.${col.name} (already exists)`);
+    }
+  }
+
+  // ── 9. SERP results table (top-20 per snapshot) ──
+  await run('Create serp_results table', `
+    CREATE TABLE IF NOT EXISTS "serp_results" (
+      "id" SERIAL PRIMARY KEY,
+      "snapshot_id" INTEGER NOT NULL,
+      "rank" INTEGER NOT NULL,
+      "type" TEXT NOT NULL,
+      "url" TEXT,
+      "domain" TEXT,
+      "title" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "serp_results_snapshot_id_fkey"
+        FOREIGN KEY ("snapshot_id") REFERENCES "weekly_snapshots"("id") ON DELETE CASCADE
+    )
+  `);
+  await run('Index on serp_results(snapshot_id)', `
+    CREATE INDEX IF NOT EXISTS "serp_results_snapshot_id_idx" ON "serp_results"("snapshot_id")
+  `);
+
+  // ── 10. Add type column to notes ──
   const noteTypeExists = await client.query(`
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'notes' AND column_name = 'type'
@@ -191,7 +227,7 @@ async function main() {
     console.log(`  – notes.type (already exists)`);
   }
 
-  // ── 9. Add keyword index for performance ──
+  // ── 11. Add keyword index for performance ──
   await run('Index on keywords(url_id, tracked)', `CREATE INDEX IF NOT EXISTS "keywords_url_id_tracked_idx" ON "keywords"("url_id", "tracked")`);
 
   // ── NOTE: We do NOT drop any columns or tables. ──

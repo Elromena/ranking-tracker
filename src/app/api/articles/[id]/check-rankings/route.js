@@ -87,6 +87,7 @@ export async function POST(request, { params }) {
             keyword: kw.keyword,
             keywordId: kw.id,
             localeId: loc.id,
+            articleUrl: loc.url,
             prevSnapshot: kw.snapshots?.[0] || null,
           });
         }
@@ -104,6 +105,8 @@ export async function POST(request, { params }) {
       const uniqueKeywords = [...batch.keywords];
       totalApiCalls += uniqueKeywords.length;
 
+      const firstArticleUrl = batch.kwMeta[0]?.articleUrl || null;
+
       let dfsData = {};
       try {
         dfsData = await batchSerpPositions({
@@ -111,6 +114,7 @@ export async function POST(request, { params }) {
           targetDomain,
           country: batch.country,
           language: batch.language,
+          articleUrl: firstArticleUrl,
           provider: PROVIDERS.DATAFORSEO,
         });
       } catch (e) {
@@ -126,7 +130,7 @@ export async function POST(request, { params }) {
         const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
 
         try {
-          await prisma.snapshot.upsert({
+          const snapshot = await prisma.snapshot.upsert({
             where: {
               keywordId_countryCode_date: {
                 keywordId: meta.keywordId,
@@ -143,15 +147,33 @@ export async function POST(request, { params }) {
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
+              foundUrl: dfs.foundUrl || null,
+              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
             },
             update: {
               serpPosition: currentPos,
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
+              foundUrl: dfs.foundUrl || null,
+              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
             },
           });
           totalKeywordsProcessed++;
+
+          if (dfs.top20?.length > 0) {
+            await prisma.serpResult.deleteMany({ where: { snapshotId: snapshot.id } });
+            await prisma.serpResult.createMany({
+              data: dfs.top20.map((item) => ({
+                snapshotId: snapshot.id,
+                rank: item.rank,
+                type: item.type,
+                url: item.url,
+                domain: item.domain,
+                title: item.title,
+              })),
+            });
+          }
         } catch (e) {
           log.push(`Snapshot error (kw:${meta.keywordId}): ${e.message}`);
           totalErrors++;

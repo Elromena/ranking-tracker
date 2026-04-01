@@ -41,6 +41,8 @@ export async function GET(request, { params }) {
                   prevPosition: true,
                   posChange: true,
                   serpFeatures: true,
+                  foundUrl: true,
+                  otherUrls: true,
                 },
               },
             },

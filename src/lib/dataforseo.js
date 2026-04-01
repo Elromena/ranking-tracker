@@ -121,7 +121,7 @@ export async function getSerpPosition({
   const locationCode = locationMap[country] || 2840;
 
   try {
-    const data = await dfsRequest("/serp/google/organic/live/regular", [
+    const data = await dfsRequest("/serp/google/organic/live/advanced", [
       {
         keyword,
         location_code: locationCode,
@@ -343,11 +343,10 @@ export async function batchSerpPositions({
   targetDomain,
   country = "us",
   language = "en",
-  provider = PROVIDERS.DATAFORSEO, // Default to DataForSEO
-  serpApiKey = process.env.SERPAPI_KEY, // Optional, falls back to env
+  articleUrl = null,
+  provider = PROVIDERS.DATAFORSEO,
+  serpApiKey = process.env.SERPAPI_KEY,
 }) {
-  const results = {};
-
   console.log(`Processing ${keywords.length} keywords using ${provider}`);
 
   if (provider === PROVIDERS.DATAFORSEO) {
@@ -356,6 +355,7 @@ export async function batchSerpPositions({
       targetDomain,
       country,
       language,
+      articleUrl,
     });
   } else if (provider === PROVIDERS.SERPAPI) {
     return await processWithSerpAPI({
@@ -474,15 +474,31 @@ export async function getHistoricalSerpPositions({
   return results;
 }
 
+const SERP_FEATURE_TYPES = new Set([
+  "featured_snippet", "people_also_ask", "ai_overview",
+  "knowledge_graph", "local_pack", "video", "top_stories",
+  "shopping", "paid", "answer_box", "carousel",
+]);
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return u.pathname.replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
 async function processWithDataForSEO({
   keywords,
   targetDomain,
   country,
   language,
+  articleUrl = null,
 }) {
   const results = {};
+  const articlePath = articleUrl ? normalizeUrl(articleUrl) : null;
 
-  // Create individual tasks
   const tasks = keywords.map((kw) => ({
     keyword: kw,
     location_code: LOCATION_CODES[country] || 2840,
@@ -490,7 +506,6 @@ async function processWithDataForSEO({
     depth: 100,
   }));
 
-  // Process tasks in batches with concurrency control
   const concurrencyLimit = 5;
   const successfulResults = [];
 
@@ -502,52 +517,25 @@ async function processWithDataForSEO({
 
     const batchPromises = batch.map(async (task) => {
       try {
-        const response = await dfsRequest("/serp/google/organic/live/regular", [
+        const response = await dfsRequest("/serp/google/organic/live/advanced", [
           task,
         ]);
 
-        if (response && response.tasks && response.tasks.length > 0) {
+        if (response?.tasks?.length > 0) {
           const successfulTask = response.tasks.find(
             (t) => t.status_code === 20000,
           );
-          const failedTask = response.tasks.find(
-            (t) => t.status_code !== 20000,
-          );
-
           if (successfulTask) {
-            return {
-              keyword: task.keyword,
-              success: true,
-              data: successfulTask,
-              error: null,
-            };
-          } else if (failedTask) {
-            return {
-              keyword: task.keyword,
-              success: false,
-              data: null,
-              error: failedTask.status_message,
-            };
+            return { keyword: task.keyword, success: true, data: successfulTask, error: null };
           }
+          const failedTask = response.tasks.find((t) => t.status_code !== 20000);
+          return { keyword: task.keyword, success: false, data: null, error: failedTask?.status_message || "Task failed" };
         }
 
-        return {
-          keyword: task.keyword,
-          success: false,
-          data: null,
-          error: "No valid task in response",
-        };
+        return { keyword: task.keyword, success: false, data: null, error: "No valid task in response" };
       } catch (error) {
-        console.error(
-          `Error processing keyword "${task.keyword}":`,
-          error.message,
-        );
-        return {
-          keyword: task.keyword,
-          success: false,
-          data: null,
-          error: error.message,
-        };
+        console.error(`Error processing keyword "${task.keyword}":`, error.message);
+        return { keyword: task.keyword, success: false, data: null, error: error.message };
       }
     });
 
@@ -559,72 +547,84 @@ async function processWithDataForSEO({
     }
   }
 
-  // Process DataForSEO results into consistent format
   for (const { keyword, success, data, error } of successfulResults) {
     if (!success || !data) {
-      results[keyword] = {
-        position: null,
-        serpFeatures: [],
-        foundUrl: null,
-        error: error || "Failed to fetch data",
-      };
+      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], top20: [], error: error || "Failed to fetch data" };
       continue;
     }
 
     const result = data.result?.[0];
-
     if (!result) {
-      results[keyword] = {
-        position: null,
-        serpFeatures: [],
-        foundUrl: null,
-      };
+      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], top20: [] };
       continue;
     }
 
     const items = result.items || [];
     let position = null;
     let foundUrl = null;
+    const otherDomainUrls = [];
+    const serpFeatures = new Set();
 
+    // Scan ALL items for domain matches and SERP features
     for (const item of items) {
-      if (item.type === "organic" && item.domain?.includes(targetDomain)) {
+      if (SERP_FEATURE_TYPES.has(item.type)) {
+        serpFeatures.add(item.type === "people_also_ask" ? "paa" : item.type);
+      }
+
+      const isDomainMatch = item.domain && item.domain.includes(targetDomain);
+      if (!isDomainMatch) continue;
+
+      // Check if this is the specific article URL
+      if (articlePath && item.url) {
+        const itemPath = normalizeUrl(item.url);
+        if (itemPath === articlePath) {
+          if (position === null) {
+            position = item.rank_absolute;
+            foundUrl = item.url;
+          }
+          continue;
+        }
+      }
+
+      // If no articleUrl provided, first domain match is our position (backward compat)
+      if (!articlePath && item.type === "organic" && position === null) {
         position = item.rank_absolute;
         foundUrl = item.url;
-        break;
+        continue;
+      }
+
+      // Other domain URLs = potential cannibalization
+      if (item.url && item.type === "organic") {
+        otherDomainUrls.push({ url: item.url, position: item.rank_absolute });
       }
     }
 
-    const serpFeatures = [];
-    for (const item of items) {
-      if (
-        [
-          "featured_snippet",
-          "people_also_ask",
-          "local_pack",
-          "knowledge_graph",
-          "video",
-        ].includes(item.type)
-      ) {
-        serpFeatures.push(item.type === "people_also_ask" ? "paa" : item.type);
-      }
-    }
+    // Build top-20 by rank_absolute (includes SERP features, not just organic)
+    const sortedItems = [...items]
+      .filter((it) => it.rank_absolute != null)
+      .sort((a, b) => a.rank_absolute - b.rank_absolute)
+      .slice(0, 20);
+
+    const top20 = sortedItems.map((it) => ({
+      rank: it.rank_absolute,
+      type: it.type,
+      url: it.url || null,
+      domain: it.domain || null,
+      title: it.title || null,
+    }));
 
     results[keyword] = {
       position,
-      serpFeatures: [...new Set(serpFeatures)],
+      serpFeatures: [...serpFeatures],
       foundUrl,
+      otherDomainUrls,
+      top20,
     };
   }
 
-  const successful = Object.values(results).filter(
-    (r) => r.position !== null,
-  ).length;
-  const failed = Object.values(results).filter(
-    (r) => r.position === null,
-  ).length;
-  console.log(
-    `DataForSEO Complete: ${successful} successful, ${failed} failed`,
-  );
+  const successful = Object.values(results).filter((r) => r.position !== null).length;
+  const failed = Object.values(results).filter((r) => r.position === null).length;
+  console.log(`DataForSEO Complete: ${successful} found, ${failed} not found`);
 
   return results;
 }

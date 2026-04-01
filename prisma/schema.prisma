@@ -88,9 +88,14 @@ model Snapshot {
   prevPosition Int? @map("prev_position")
   posChange    Int  @default(0) @map("pos_change")
 
+  // SERP landscape data
+  foundUrl  String? @map("found_url")   // exact article URL if found in results
+  otherUrls String? @map("other_urls")  // JSON array of {url, position} for other domain URLs
+
   createdAt DateTime @default(now())
 
-  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  keyword     Keyword      @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  serpResults  SerpResult[]
 
   @@unique([keywordId, countryCode, date])
   @@index([keywordId, date(sort: Desc)])
@@ -99,7 +104,24 @@ model Snapshot {
   @@index([countryCode])
   @@index([posChange, date])
   @@index([serpPosition, date])
-  @@map("weekly_snapshots") // keep same table name for migration
+  @@map("weekly_snapshots")
+}
+
+// ─── SERP landscape: top-20 results per snapshot ───
+model SerpResult {
+  id         Int      @id @default(autoincrement())
+  snapshotId Int      @map("snapshot_id")
+  rank       Int      // rank_absolute from DataForSEO
+  type       String   // organic, featured_snippet, people_also_ask, ai_overview, etc.
+  url        String?  // null for non-link features like PAA
+  domain     String?  // null for non-link features
+  title      String?
+  createdAt  DateTime @default(now())
+
+  snapshot Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+  @@map("serp_results")
 }
 
 // ─── Modified: Note with type field ───
