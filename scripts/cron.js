@@ -84,8 +84,13 @@ async function run() {
     if (data.ok) {
       console.log(`[CRON] ✅ Completed in ${data.duration}`);
       console.log(
-        `[CRON] Alerts: ${data.alerts.critical} critical, ${data.alerts.warning} warnings, ${data.alerts.positive} positive`,
+        `[CRON] ${data.keywordsProcessed || 0} keywords | ${data.apiCalls || 0} API calls | cost: $${(data.estimatedCost || 0).toFixed(4)}`,
       );
+      if (data.movements) {
+        console.log(
+          `[CRON] Movements: ${data.movements.drops || 0} drops, ${data.movements.gains || 0} gains, ${data.movements.top3 || 0} new top-3`,
+        );
+      }
       if (data.log) {
         console.log("[CRON] Log:");
         data.log.forEach((l) => console.log(`  ${l}`));
