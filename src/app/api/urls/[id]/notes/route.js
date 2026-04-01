@@ -1,6 +1,17 @@
 import { prisma } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+function sanitizeRichText(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+    .replace(/\son\w+="[^"]*"/gi, '')
+    .replace(/\son\w+='[^']*'/gi, '')
+    .replace(/javascript:/gi, '')
+    .trim();
+}
+
 // POST /api/urls/[id]/notes — add a note to a locale's changelog
 // Auto-triggers "in_review" stage when a non-general note is added
 export async function POST(request, { params }) {
@@ -12,10 +23,17 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: 'text required' }, { status: 400 });
   }
 
+  const noteType = type || 'change';
+  const safeText = noteType === 'general' ? sanitizeRichText(text) : String(text).trim();
+  const isEmptyGeneral = noteType === 'general' && !safeText.replace(/<[^>]+>/g, '').trim();
+  if (!safeText || isEmptyGeneral) {
+    return NextResponse.json({ error: 'text required' }, { status: 400 });
+  }
+
   const data = {
     urlId,
-    text,
-    type: type || 'change',
+    text: safeText,
+    type: noteType,
   };
 
   if (createdAt) {
@@ -25,7 +43,6 @@ export async function POST(request, { params }) {
   const note = await prisma.note.create({ data });
 
   // Auto-trigger review stage for non-general notes
-  const noteType = type || 'change';
   if (noteType !== 'general') {
     const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: urlId } });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ArrowLeft,
   Pencil,
@@ -52,6 +52,14 @@ function positionCellClasses(pos) {
   return "bg-red-200 text-red-900";
 }
 
+function stripHtml(html = "") {
+  return String(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isRichTextEmpty(html = "") {
+  return !stripHtml(html);
+}
+
 export default function ArticleDetailView({
   articleId,
   onBack,
@@ -85,6 +93,7 @@ export default function ArticleDetailView({
   // Note form state
   const [noteText, setNoteText] = useState("");
   const [noteType, setNoteType] = useState("change");
+  const [observationHtml, setObservationHtml] = useState("");
   const [noteDate, setNoteDate] = useState(
     () => new Date().toISOString().split("T")[0]
   );
@@ -94,8 +103,11 @@ export default function ArticleDetailView({
   // Edit note state
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
+  const [editingType, setEditingType] = useState("change");
   const [editingDate, setEditingDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const observationEditorRef = useRef(null);
+  const editingEditorRef = useRef(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -117,6 +129,17 @@ export default function ArticleDetailView({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const formatRich = (action) => {
+    if (typeof document === "undefined") return;
+    document.execCommand(action, false);
+  };
+
+  useEffect(() => {
+    if (editingId && editingType === "general" && editingEditorRef.current) {
+      editingEditorRef.current.innerHTML = editingText || "";
+    }
+  }, [editingId, editingType]);
 
   const checkRankings = async () => {
     setChecking(true);
@@ -178,9 +201,18 @@ export default function ArticleDetailView({
     );
   }, [currentLocale, locales]);
 
+  const changeLogNotes = useMemo(
+    () => displayNotes.filter((n) => n.type !== "general"),
+    [displayNotes]
+  );
+  const observationNotes = useMemo(
+    () => displayNotes.filter((n) => n.type === "general"),
+    [displayNotes]
+  );
+
   const chartData = currentLocale || {
     keywords: displayKeywords,
-    notes: displayNotes,
+    notes: changeLogNotes,
   };
 
   const allPageTraffic = useMemo(() => {
@@ -220,8 +252,10 @@ export default function ArticleDetailView({
   }, [currentLocale]);
 
   // Actions
-  const addNote = async () => {
-    if (!noteText.trim() || !currentLocale) return;
+  const addNote = async ({ type, text, reviewDays = noteReviewDays }) => {
+    if (!currentLocale) return;
+    const trimmed = type === "general" ? text : text?.trim();
+    if (!trimmed || (type === "general" && isRichTextEmpty(trimmed))) return;
     setActionLoading(true);
     const dt = new Date(noteDate);
     dt.setUTCHours(12, 0, 0, 0);
@@ -229,13 +263,18 @@ export default function ArticleDetailView({
       await api(`/urls/${currentLocale.id}/notes`, {
         method: "POST",
         body: JSON.stringify({
-          text: noteText.trim(),
+          text: trimmed,
           createdAt: dt.toISOString(),
-          type: noteType,
-          reviewDays: noteReviewDays,
+          type,
+          reviewDays,
         }),
       });
-      setNoteText("");
+      if (type === "general") {
+        setObservationHtml("");
+        if (observationEditorRef.current) observationEditorRef.current.innerHTML = "";
+      } else {
+        setNoteText("");
+      }
       setNoteDate(new Date().toISOString().split("T")[0]);
       fetchData();
       if (onRefresh) onRefresh();
@@ -263,16 +302,23 @@ export default function ArticleDetailView({
   const startEdit = (note) => {
     setEditingId(note.id);
     setEditingText(note.text);
+    setEditingType(note.type || "change");
     setEditingDate(new Date(note.createdAt).toISOString().split("T")[0]);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditingText("");
+    setEditingType("change");
   };
 
   const saveEdit = async (localeId) => {
-    if (!editingText.trim()) return;
+    if (
+      !editingText ||
+      (editingType === "general" ? isRichTextEmpty(editingText) : !editingText.trim())
+    ) {
+      return;
+    }
     setSaving(true);
     const dt = new Date(editingDate);
     dt.setUTCHours(12, 0, 0, 0);
@@ -873,172 +919,170 @@ export default function ArticleDetailView({
       {/* ── Change Log Tab ── */}
       {tab === "notes" && (
         <div className="space-y-5">
-          {/* Review flow hint */}
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
-            <strong>Tip:</strong> Adding a non-general note starts a review period to track ranking impact.
-            The locale moves to &ldquo;In Review&rdquo; and reverts to &ldquo;Monitoring&rdquo; after the review window ends.
+            <strong>Tip:</strong> Change Log entries are for chart annotations and review tracking.
+            General Observations are rich-text collaboration notes for recommendations.
           </div>
 
-          {/* Add Note Form (specific locale only) */}
           {currentLocale ? (
-            <Card className="p-5">
-              <h3 className="text-sm font-bold text-slate-700 mb-3">
-                Add Note
-              </h3>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <Input
-                  type="date"
-                  value={noteDate}
-                  onChange={(e) =>
-                    setNoteDate(
-                      typeof e === "string" ? e : e.target.value
-                    )
-                  }
-                  className="w-36"
-                />
-                <Select
-                  value={noteType}
-                  onChange={(e) => setNoteType(e.target.value)}
-                  className="w-40"
-                >
-                  {Object.entries(noteTypeCfg).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v.l}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={noteReviewDays}
-                  onChange={(e) =>
-                    setNoteReviewDays(parseInt(e.target.value))
-                  }
-                  className="w-40"
-                >
-                  <option value={7}>Review: 1 week</option>
-                  <option value={14}>Review: 2 weeks</option>
-                  <option value={21}>Review: 3 weeks</option>
-                  <option value={28}>Review: 4 weeks</option>
-                  <option value={35}>Review: 5 weeks</option>
-                  <option value={42}>Review: 6 weeks</option>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={noteText}
-                  onChange={(e) =>
-                    setNoteText(
-                      typeof e === "string" ? e : e.target.value
-                    )
-                  }
-                  placeholder="What did you change?"
-                  className="flex-1"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addNote();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={addNote}
-                  disabled={actionLoading || !noteText.trim()}
-                  className="gap-1.5 shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Note
-                </Button>
-              </div>
-            </Card>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card className="p-5">
+                <h3 className="text-sm font-bold text-slate-700 mb-2">Add Change Log (Annotated)</h3>
+                <p className="text-xs text-slate-400 mb-3">
+                  Content changes, optimization, technical fixes, and algorithm updates.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Input
+                    type="date"
+                    value={noteDate}
+                    onChange={(e) => setNoteDate(typeof e === "string" ? e : e.target.value)}
+                    className="w-36"
+                  />
+                  <Select
+                    value={noteType}
+                    onChange={(e) => setNoteType(e.target.value)}
+                    className="w-44"
+                  >
+                    {Object.entries(noteTypeCfg)
+                      .filter(([k]) => k !== "general")
+                      .map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v.l}
+                        </option>
+                      ))}
+                  </Select>
+                  <Select
+                    value={noteReviewDays}
+                    onChange={(e) => setNoteReviewDays(parseInt(e.target.value))}
+                    className="w-40"
+                  >
+                    <option value={7}>Review: 1 week</option>
+                    <option value={14}>Review: 2 weeks</option>
+                    <option value={21}>Review: 3 weeks</option>
+                    <option value={28}>Review: 4 weeks</option>
+                    <option value={35}>Review: 5 weeks</option>
+                    <option value={42}>Review: 6 weeks</option>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={noteText}
+                    onChange={(e) => setNoteText(typeof e === "string" ? e : e.target.value)}
+                    placeholder="What changed in this article?"
+                    className="flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addNote({ type: noteType, text: noteText });
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => addNote({ type: noteType, text: noteText })}
+                    disabled={actionLoading || !noteText.trim()}
+                    className="gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <h3 className="text-sm font-bold text-slate-700 mb-2">Add General Observation (Rich Text)</h3>
+                <p className="text-xs text-slate-400 mb-3">
+                  Team observations and recommendations for next actions.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Input
+                    type="date"
+                    value={noteDate}
+                    onChange={(e) => setNoteDate(typeof e === "string" ? e : e.target.value)}
+                    className="w-36"
+                  />
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 border-b border-slate-200">
+                    <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200" onClick={() => formatRich("bold")}>B</button>
+                    <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200 italic" onClick={() => formatRich("italic")}>I</button>
+                    <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200 underline" onClick={() => formatRich("underline")}>U</button>
+                    <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200" onClick={() => formatRich("insertUnorderedList")}>• List</button>
+                  </div>
+                  <div
+                    ref={observationEditorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    className="min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none"
+                    onInput={(e) => setObservationHtml(e.currentTarget.innerHTML)}
+                  />
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    onClick={() => addNote({ type: "general", text: observationHtml, reviewDays: null })}
+                    disabled={actionLoading || isRichTextEmpty(observationHtml)}
+                    className="gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Observation
+                  </Button>
+                </div>
+              </Card>
+            </div>
           ) : (
             <div className="px-3 py-2.5 bg-slate-50 rounded-lg text-xs text-slate-400">
               Select a specific locale tab to add notes
             </div>
           )}
 
-          {/* Notes Timeline */}
           <Card className="p-5">
             <h3 className="text-sm font-bold text-slate-700 mb-4">
-              {isAllLocales ? "All Notes" : "Notes"}
+              {isAllLocales ? "Annotated Change Log (All Locales)" : "Annotated Change Log"}
             </h3>
-
-            {displayNotes.length === 0 ? (
-              <p className="text-sm text-slate-400 py-8 text-center">
-                No notes yet
-              </p>
+            {changeLogNotes.length === 0 ? (
+              <p className="text-sm text-slate-400 py-8 text-center">No change log entries yet</p>
             ) : (
               <div className="relative pl-7">
-                {/* Vertical line */}
                 <div className="absolute left-[7px] top-1 bottom-1 w-0.5 bg-slate-200" />
-
                 <div className="space-y-6">
-                  {displayNotes.map((n, i) => {
+                  {changeLogNotes.map((n, i) => {
                     const ntCfg = noteTypeCfg[n.type] || noteTypeCfg.general;
                     const localeId =
                       n._localeId ||
                       currentLocale?.id ||
                       locales.find((l) => l.locale === n._locale)?.id;
-                    const dotColor =
-                      NOTE_DOT_COLORS[n.type] || NOTE_DOT_COLORS.general;
-
+                    const dotColor = NOTE_DOT_COLORS[n.type] || NOTE_DOT_COLORS.general;
                     return (
                       <div key={n.id || i} className="relative">
-                        {/* Timeline dot */}
-                        <div
-                          className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full ring-2 ring-white ${dotColor}`}
-                        />
-
+                        <div className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full ring-2 ring-white ${dotColor}`} />
                         <div className="space-y-1">
-                          {/* Meta row */}
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-mono font-semibold text-slate-400">
                               <Calendar className="w-3 h-3 inline mr-1" />
                               {new Date(n.createdAt).toLocaleDateString()}
                             </span>
                             <Badge>{ntCfg.l}</Badge>
-                            {n._locale && (
-                              <LocalePill locale={n._locale} />
-                            )}
+                            {n._locale && <LocalePill locale={n._locale} />}
                           </div>
-
-                          {/* Content or edit form */}
                           {editingId === n.id ? (
                             <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-2">
                               <Input
                                 type="date"
                                 value={editingDate}
-                                onChange={(e) =>
-                                  setEditingDate(
-                                    typeof e === "string"
-                                      ? e
-                                      : e.target.value
-                                  )
-                                }
+                                onChange={(e) => setEditingDate(typeof e === "string" ? e : e.target.value)}
                                 className="w-40"
                               />
                               <textarea
                                 value={editingText}
-                                onChange={(e) =>
-                                  setEditingText(e.target.value)
-                                }
-                                rows={2}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                rows={3}
                                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y"
                               />
                               <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => saveEdit(localeId)}
-                                  disabled={saving}
-                                  className="gap-1"
-                                >
+                                <Button size="sm" onClick={() => saveEdit(localeId)} disabled={saving} className="gap-1">
                                   <Save className="w-3 h-3" />
                                   {saving ? "Saving..." : "Save"}
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={cancelEdit}
-                                  className="gap-1"
-                                >
+                                <Button size="sm" variant="ghost" onClick={cancelEdit} className="gap-1">
                                   <X className="w-3 h-3" />
                                   Cancel
                                 </Button>
@@ -1046,24 +1090,12 @@ export default function ArticleDetailView({
                             </div>
                           ) : (
                             <div className="flex items-start justify-between gap-3">
-                              <p className="text-sm text-slate-700 leading-relaxed">
-                                {n.text}
-                              </p>
-                              <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity">
-                                <button
-                                  type="button"
-                                  onClick={() => startEdit(n)}
-                                  className="p-1 text-slate-400 hover:text-blue-500 transition-colors"
-                                >
+                              <p className="text-sm text-slate-700 leading-relaxed">{n.text}</p>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button type="button" onClick={() => startEdit(n)} className="p-1 text-slate-400 hover:text-blue-500 transition-colors">
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    deleteNote(localeId, n.id)
-                                  }
-                                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                                >
+                                <button type="button" onClick={() => deleteNote(localeId, n.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -1074,6 +1106,83 @@ export default function ArticleDetailView({
                     );
                   })}
                 </div>
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="text-sm font-bold text-slate-700 mb-4">
+              {isAllLocales ? "General Observations (All Locales)" : "General Observations"}
+            </h3>
+            {observationNotes.length === 0 ? (
+              <p className="text-sm text-slate-400 py-8 text-center">No observations yet</p>
+            ) : (
+              <div className="space-y-4">
+                {observationNotes.map((n, i) => {
+                  const localeId =
+                    n._localeId ||
+                    currentLocale?.id ||
+                    locales.find((l) => l.locale === n._locale)?.id;
+                  return (
+                    <div key={n.id || i} className="rounded-lg border border-slate-200 p-4 bg-slate-50/40">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-semibold text-slate-400">
+                            <Calendar className="w-3 h-3 inline mr-1" />
+                            {new Date(n.createdAt).toLocaleDateString()}
+                          </span>
+                          <Badge>Observation</Badge>
+                          {n._locale && <LocalePill locale={n._locale} />}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={() => startEdit(n)} className="p-1 text-slate-400 hover:text-blue-500 transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button" onClick={() => deleteNote(localeId, n.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {editingId === n.id ? (
+                        <div className="space-y-2">
+                          <Input
+                            type="date"
+                            value={editingDate}
+                            onChange={(e) => setEditingDate(typeof e === "string" ? e : e.target.value)}
+                            className="w-40"
+                          />
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                            <div className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 border-b border-slate-200">
+                              <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200" onClick={() => formatRich("bold")}>B</button>
+                              <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200 italic" onClick={() => formatRich("italic")}>I</button>
+                              <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200 underline" onClick={() => formatRich("underline")}>U</button>
+                              <button type="button" className="px-2 py-1 text-xs rounded hover:bg-slate-200" onClick={() => formatRich("insertUnorderedList")}>• List</button>
+                            </div>
+                            <div
+                              ref={editingEditorRef}
+                              contentEditable
+                              suppressContentEditableWarning
+                              className="min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none"
+                              onInput={(e) => setEditingText(e.currentTarget.innerHTML)}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => saveEdit(localeId)} disabled={saving} className="gap-1">
+                              <Save className="w-3 h-3" />
+                              {saving ? "Saving..." : "Save"}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={cancelEdit} className="gap-1">
+                              <X className="w-3 h-3" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: n.text }} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>

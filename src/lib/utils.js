@@ -15,7 +15,7 @@ export const noteTypeCfg = {
   optimization: { l: "Optimization",   c: "#7c3aed", b: "#ede9fe" },
   technical:    { l: "Technical",      c: "#d97706", b: "#fef3c7" },
   algorithm:    { l: "Algorithm",      c: "#dc2626", b: "#fef2f2" },
-  general:      { l: "General",        c: "#64748b", b: "#f1f5f9" },
+  general:      { l: "Observation",    c: "#64748b", b: "#f1f5f9" },
 };
 
 // ── Locale flag emojis ──────────────────────────────────────
