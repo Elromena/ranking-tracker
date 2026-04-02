@@ -184,7 +184,6 @@ export default function DashboardView({ articles, onSelectArticle, onAddArticle,
                       {formatDisplayUrl(firstLocaleUrl)}
                     </div>
                   )}
-                  </div>
                 </div>
 
                 {/* Locale pills */}
