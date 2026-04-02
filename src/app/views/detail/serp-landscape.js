@@ -5,6 +5,7 @@ import {
   Bot,
   Star,
   HelpCircle,
+  MessageSquare,
   Play,
   MapPin,
   ShoppingCart,
@@ -30,10 +31,26 @@ const SERP_TYPE_CONFIG = {
   paid: { label: "Ad", icon: Megaphone, bg: "bg-yellow-50", border: "border-yellow-300" },
   answer_box: { label: "Answer Box", icon: Star, bg: "bg-emerald-50", border: "border-emerald-200" },
   carousel: { label: "Carousel", icon: ArrowRight, bg: "bg-slate-50", border: "border-slate-200" },
+  discussions_and_forums: { label: "Discussions & Forums", icon: HelpCircle, bg: "bg-blue-50", border: "border-blue-200" },
+  google_reviews: { label: "Google Reviews", icon: Star, bg: "bg-amber-50", border: "border-amber-300" },
+  short_videos: { label: "Short Videos", icon: Play, bg: "bg-red-50", border: "border-red-200" },
+  perspectives: { label: "Perspectives", icon: MessageSquare, bg: "bg-slate-50", border: "border-slate-200" },
+  related_searches: { label: "Related Searches", icon: Search, bg: "bg-slate-50", border: "border-slate-200" },
 };
 
+function humanizeType(type = "") {
+  return String(type)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase()) || "SERP Feature";
+}
+
 function getTypeConfig(type) {
-  return SERP_TYPE_CONFIG[type] || SERP_TYPE_CONFIG.organic;
+  return SERP_TYPE_CONFIG[type] || {
+    label: humanizeType(type),
+    icon: Search,
+    bg: "bg-slate-50",
+    border: "border-slate-200",
+  };
 }
 
 function normalizeUrlIdentity(url) {
@@ -53,6 +70,11 @@ function getItemIdentity(item) {
   if (urlKey) return `url:${urlKey}`;
   if (item?.type) return `feature:${item.type}:${item?.title || item?.rank || ""}`;
   return null;
+}
+
+function getRowKey(item, idx, side) {
+  const identity = getItemIdentity(item) || `unknown:${idx}`;
+  return `${side}:${item.rank}:${item.type}:${identity}`;
 }
 
 function formatDisplayUrl(url, domain) {
@@ -309,24 +331,27 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
     const pairs = [];
     const rightByIdentity = new Map();
 
-    for (const item of rightResults) {
+    for (let i = 0; i < rightResults.length; i++) {
+      const item = rightResults[i];
       const id = getItemIdentity(item);
       if (!id) continue;
       if (!rightByIdentity.has(id)) {
-        rightByIdentity.set(id, item);
+        rightByIdentity.set(id, { item, rowKey: getRowKey(item, i, "right") });
       }
     }
 
-    for (const leftItem of leftResults) {
+    for (let i = 0; i < leftResults.length; i++) {
+      const leftItem = leftResults[i];
       const key = getItemIdentity(leftItem);
       if (!key) continue;
 
-      const rightItem = rightByIdentity.get(key);
-      if (!rightItem) continue;
+      const rightHit = rightByIdentity.get(key);
+      if (!rightHit) continue;
+      const rightItem = rightHit.item;
 
       pairs.push({
-        leftKey: `left-${leftItem.rank}`,
-        rightKey: `right-${rightItem.rank}`,
+        leftKey: getRowKey(leftItem, i, "left"),
+        rightKey: rightHit.rowKey,
         leftRank: leftItem.rank,
         rightRank: rightItem.rank,
         domain: leftItem.domain,
@@ -493,10 +518,10 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
 
             {/* Left column results */}
             <div className="space-y-2 min-w-0">
-              {leftResults.map((item) => (
+              {leftResults.map((item, i) => (
                 <div
-                  key={`left-${item.rank}`}
-                  ref={(el) => { leftRefs.current[`left-${item.rank}`] = el; }}
+                  key={getRowKey(item, i, "left")}
+                  ref={(el) => { leftRefs.current[getRowKey(item, i, "left")] = el; }}
                   className="relative"
                 >
                   <SerpCard
@@ -523,10 +548,10 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
 
             {/* Right column results */}
             <div className="space-y-2 min-w-0">
-              {rightResults.map((item) => (
+              {rightResults.map((item, i) => (
                 <div
-                  key={`right-${item.rank}`}
-                  ref={(el) => { rightRefs.current[`right-${item.rank}`] = el; }}
+                  key={getRowKey(item, i, "right")}
+                  ref={(el) => { rightRefs.current[getRowKey(item, i, "right")] = el; }}
                   className="relative"
                 >
                   <SerpCard
