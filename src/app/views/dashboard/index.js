@@ -83,6 +83,19 @@ export default function DashboardView({ articles, onSelectArticle, onAddArticle,
     ...allLocales.map(l => ({ value: l, label: localeFlags[l] || l.toUpperCase() })),
   ];
 
+  const formatDisplayUrl = (url) => {
+    if (!url) return "";
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^www\./, "");
+      const path = u.pathname === "/" ? "" : u.pathname;
+      const compact = `${host}${path}`;
+      return compact.length > 52 ? `${compact.slice(0, 51)}…` : compact;
+    } catch {
+      return url.length > 52 ? `${url.slice(0, 51)}…` : url;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Summary Metric Cards */}
@@ -142,6 +155,7 @@ export default function DashboardView({ articles, onSelectArticle, onAddArticle,
             const totalKeywords = (article.locales || []).reduce(
               (sum, l) => sum + (l.keywordCount || 0), 0
             );
+            const firstLocaleUrl = article.locales?.[0]?.url || "";
 
             return (
               <Card
@@ -154,11 +168,22 @@ export default function DashboardView({ articles, onSelectArticle, onAddArticle,
                   <div className="text-sm font-semibold text-slate-900 truncate">
                     {article.title}
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 min-w-0">
                     {article.category && (
                       <Badge variant="default" className="text-[10px]">{article.category}</Badge>
                     )}
-                    <span className="text-[11px] text-slate-400 truncate">/{article.slug}</span>
+                    <span
+                      className="text-[11px] text-slate-400 truncate"
+                      title={`slug: /${article.slug}`}
+                    >
+                      slug: /{article.slug}
+                    </span>
+                  </div>
+                  {firstLocaleUrl && (
+                    <div className="text-[11px] text-slate-500 truncate mt-0.5" title={firstLocaleUrl}>
+                      {formatDisplayUrl(firstLocaleUrl)}
+                    </div>
+                  )}
                   </div>
                 </div>
 
