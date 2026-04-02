@@ -55,6 +55,19 @@ function getItemIdentity(item) {
   return null;
 }
 
+function formatDisplayUrl(url, domain) {
+  if (!url) return domain || "—";
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    const path = u.pathname === "/" ? "" : u.pathname;
+    const compact = `${host}${path}`;
+    return compact.length > 68 ? `${compact.slice(0, 67)}…` : compact;
+  } catch {
+    return url.length > 68 ? `${url.slice(0, 67)}…` : url;
+  }
+}
+
 function SerpCard({ item, isOurDomain, side }) {
   const cfg = getTypeConfig(item.type);
   const Icon = cfg.icon;
@@ -87,9 +100,9 @@ function SerpCard({ item, isOurDomain, side }) {
           <span className="text-xs font-semibold text-slate-600">{cfg.label}</span>
         </div>
       ) : (
-        <div className="space-y-0.5">
+        <div className="space-y-0.5 min-w-0">
           {/* URL line */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             {item.domain && (
               <img
                 src={`https://www.google.com/s2/favicons?domain=${item.domain}&sz=16`}
@@ -98,12 +111,18 @@ function SerpCard({ item, isOurDomain, side }) {
                 onError={(e) => { e.target.style.display = "none"; }}
               />
             )}
-            <span className={`text-[11px] truncate ${isOurDomain ? "text-emerald-700 font-semibold" : "text-green-700"}`}>
-              {item.url || item.domain || "—"}
+            <span
+              title={item.url || item.domain || ""}
+              className={`text-[11px] truncate min-w-0 block ${isOurDomain ? "text-emerald-700 font-semibold" : "text-green-700"}`}
+            >
+              {formatDisplayUrl(item.url, item.domain)}
             </span>
           </div>
           {/* Title */}
-          <p className={`text-xs leading-snug truncate ${isOurDomain ? "text-emerald-900 font-semibold" : "text-blue-800"}`}>
+          <p
+            title={item.title || ""}
+            className={`text-xs leading-snug line-clamp-2 break-words ${isOurDomain ? "text-emerald-900 font-semibold" : "text-blue-800"}`}
+          >
             {item.title || "Untitled"}
           </p>
         </div>
@@ -205,6 +224,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
   const [selectedKeyword, setSelectedKeyword] = useState(null);
   const [dateA, setDateA] = useState("");
   const [dateB, setDateB] = useState("");
+  const [showExtended, setShowExtended] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -240,6 +260,11 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
     fetchData();
   }, [fetchData]);
 
+  // Reset to top-10 view when comparison inputs change
+  useEffect(() => {
+    setShowExtended(false);
+  }, [selectedKeyword?.id, dateA, dateB]);
+
   // Preset handlers
   const applyPreset = (preset) => {
     const now = new Date();
@@ -262,13 +287,29 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
   }, []);
 
   // Build match pairs for Bezier lines
+  const leftResults = useMemo(() => {
+    const rows = data?.dateA?.results || [];
+    return showExtended ? rows : rows.filter((r) => r.rank <= 10);
+  }, [data, showExtended]);
+
+  const rightResults = useMemo(() => {
+    const rows = data?.dateB?.results || [];
+    return showExtended ? rows : rows.filter((r) => r.rank <= 10);
+  }, [data, showExtended]);
+
+  const hasExtendedRows = useMemo(() => {
+    const leftHas = (data?.dateA?.results || []).some((r) => r.rank > 10);
+    const rightHas = (data?.dateB?.results || []).some((r) => r.rank > 10);
+    return leftHas || rightHas;
+  }, [data]);
+
   const matchPairs = useMemo(() => {
-    if (!data?.dateA?.results || !data?.dateB?.results) return [];
+    if (!leftResults.length || !rightResults.length) return [];
 
     const pairs = [];
     const rightByIdentity = new Map();
 
-    for (const item of data.dateB.results) {
+    for (const item of rightResults) {
       const id = getItemIdentity(item);
       if (!id) continue;
       if (!rightByIdentity.has(id)) {
@@ -276,7 +317,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
       }
     }
 
-    for (const leftItem of data.dateA.results) {
+    for (const leftItem of leftResults) {
       const key = getItemIdentity(leftItem);
       if (!key) continue;
 
@@ -293,20 +334,20 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
     }
 
     return pairs;
-  }, [data]);
+  }, [leftResults, rightResults]);
 
   // Identity keys only on left or right (for NEW/GONE badges)
   const { leftOnly, rightOnly } = useMemo(() => {
-    if (!data?.dateA?.results || !data?.dateB?.results) return { leftOnly: new Set(), rightOnly: new Set() };
+    if (!leftResults.length && !rightResults.length) return { leftOnly: new Set(), rightOnly: new Set() };
 
-    const leftKeys = new Set(data.dateA.results.map(getItemIdentity).filter(Boolean));
-    const rightKeys = new Set(data.dateB.results.map(getItemIdentity).filter(Boolean));
+    const leftKeys = new Set(leftResults.map(getItemIdentity).filter(Boolean));
+    const rightKeys = new Set(rightResults.map(getItemIdentity).filter(Boolean));
 
     return {
       leftOnly: new Set([...leftKeys].filter((k) => !rightKeys.has(k))),
       rightOnly: new Set([...rightKeys].filter((k) => !leftKeys.has(k))),
     };
-  }, [data]);
+  }, [leftResults, rightResults]);
 
   const ourDomain = data?.ourDomain || "";
 
@@ -402,6 +443,18 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
 
       {!loading && !error && data && (data.dateA || data.dateB) && (
         <div className="relative" ref={containerRef}>
+          {hasExtendedRows && (
+            <div className="flex justify-center mb-3">
+              <button
+                type="button"
+                onClick={() => setShowExtended((s) => !s)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800 transition-colors"
+              >
+                {showExtended ? "Show top 10 only" : "Show positions 11-20"}
+              </button>
+            </div>
+          )}
+
           <BezierLines
             leftRefs={leftRefs}
             rightRefs={rightRefs}
@@ -410,7 +463,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
             containerRef={containerRef}
           />
 
-          <div className="grid grid-cols-[1fr_80px_1fr] gap-0">
+          <div className="grid grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)] gap-0">
             {/* Left column header */}
             <div className="text-center pb-3">
               <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full">
@@ -439,8 +492,8 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
             </div>
 
             {/* Left column results */}
-            <div className="space-y-2">
-              {(data.dateA?.results || []).map((item) => (
+            <div className="space-y-2 min-w-0">
+              {leftResults.map((item) => (
                 <div
                   key={`left-${item.rank}`}
                   ref={(el) => { leftRefs.current[`left-${item.rank}`] = el; }}
@@ -458,7 +511,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
                   )}
                 </div>
               ))}
-              {(!data.dateA?.results || data.dateA.results.length === 0) && (
+              {leftResults.length === 0 && (
                 <div className="text-center py-10 text-slate-400 text-xs">
                   No data for this date
                 </div>
@@ -469,8 +522,8 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
             <div className="relative" />
 
             {/* Right column results */}
-            <div className="space-y-2">
-              {(data.dateB?.results || []).map((item) => (
+            <div className="space-y-2 min-w-0">
+              {rightResults.map((item) => (
                 <div
                   key={`right-${item.rank}`}
                   ref={(el) => { rightRefs.current[`right-${item.rank}`] = el; }}
@@ -488,7 +541,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
                   )}
                 </div>
               ))}
-              {(!data.dateB?.results || data.dateB.results.length === 0) && (
+              {rightResults.length === 0 && (
                 <div className="text-center py-10 text-slate-400 text-xs">
                   No data for this date
                 </div>
