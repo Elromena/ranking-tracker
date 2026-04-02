@@ -36,6 +36,25 @@ function getTypeConfig(type) {
   return SERP_TYPE_CONFIG[type] || SERP_TYPE_CONFIG.organic;
 }
 
+function normalizeUrlIdentity(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    const path = u.pathname.replace(/\/$/, "") || "/";
+    return `${host}${path}`;
+  } catch {
+    return String(url).trim().toLowerCase();
+  }
+}
+
+function getItemIdentity(item) {
+  const urlKey = normalizeUrlIdentity(item?.url);
+  if (urlKey) return `url:${urlKey}`;
+  if (item?.type) return `feature:${item.type}:${item?.title || item?.rank || ""}`;
+  return null;
+}
+
 function SerpCard({ item, isOurDomain, side }) {
   const cfg = getTypeConfig(item.type);
   const Icon = cfg.icon;
@@ -80,7 +99,7 @@ function SerpCard({ item, isOurDomain, side }) {
               />
             )}
             <span className={`text-[11px] truncate ${isOurDomain ? "text-emerald-700 font-semibold" : "text-green-700"}`}>
-              {item.domain || item.url || "—"}
+              {item.url || item.domain || "—"}
             </span>
           </div>
           {/* Title */}
@@ -126,8 +145,8 @@ function BezierLines({ leftRefs, rightRefs, matchPairs, ourDomain, containerRef 
 
       const rankChange = pair.leftRank - pair.rightRank;
       let color = "#94a3b8"; // grey = unchanged
-      if (rankChange > 0) color = "#ef4444"; // red = dropped (higher number = worse)
-      if (rankChange < 0) color = "#22c55e"; // green = improved
+      if (rankChange < 0) color = "#ef4444"; // red = dropped (1 -> 3)
+      if (rankChange > 0) color = "#22c55e"; // green = improved (12 -> 4)
 
       const isOurs = pair.domain && pair.domain.includes(ourDomain);
       const thickness = isOurs ? 3 : Math.min(2, 1 + Math.abs(rankChange) * 0.1);
@@ -247,23 +266,21 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
     if (!data?.dateA?.results || !data?.dateB?.results) return [];
 
     const pairs = [];
-    const rightByDomain = new Map();
+    const rightByIdentity = new Map();
 
     for (const item of data.dateB.results) {
-      if (item.domain) {
-        if (!rightByDomain.has(item.domain)) {
-          rightByDomain.set(item.domain, item);
-        }
-      } else if (item.type !== "organic" && item.type !== "paid") {
-        rightByDomain.set(`__feature_${item.type}`, item);
+      const id = getItemIdentity(item);
+      if (!id) continue;
+      if (!rightByIdentity.has(id)) {
+        rightByIdentity.set(id, item);
       }
     }
 
     for (const leftItem of data.dateA.results) {
-      const key = leftItem.domain || (leftItem.type !== "organic" ? `__feature_${leftItem.type}` : null);
+      const key = getItemIdentity(leftItem);
       if (!key) continue;
 
-      const rightItem = rightByDomain.get(key);
+      const rightItem = rightByIdentity.get(key);
       if (!rightItem) continue;
 
       pairs.push({
@@ -278,16 +295,16 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
     return pairs;
   }, [data]);
 
-  // Domains only on left or right (for NEW/GONE badges)
+  // Identity keys only on left or right (for NEW/GONE badges)
   const { leftOnly, rightOnly } = useMemo(() => {
     if (!data?.dateA?.results || !data?.dateB?.results) return { leftOnly: new Set(), rightOnly: new Set() };
 
-    const leftDomains = new Set(data.dateA.results.filter((r) => r.domain).map((r) => r.domain));
-    const rightDomains = new Set(data.dateB.results.filter((r) => r.domain).map((r) => r.domain));
+    const leftKeys = new Set(data.dateA.results.map(getItemIdentity).filter(Boolean));
+    const rightKeys = new Set(data.dateB.results.map(getItemIdentity).filter(Boolean));
 
     return {
-      leftOnly: new Set([...leftDomains].filter((d) => !rightDomains.has(d))),
-      rightOnly: new Set([...rightDomains].filter((d) => !leftDomains.has(d))),
+      leftOnly: new Set([...leftKeys].filter((k) => !rightKeys.has(k))),
+      rightOnly: new Set([...rightKeys].filter((k) => !leftKeys.has(k))),
     };
   }, [data]);
 
@@ -434,7 +451,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
                     isOurDomain={item.domain && item.domain.includes(ourDomain)}
                     side="left"
                   />
-                  {item.domain && leftOnly.has(item.domain) && (
+                  {leftOnly.has(getItemIdentity(item)) && (
                     <div className="absolute -right-1 top-0">
                       <StatusBadge type="gone" />
                     </div>
@@ -464,7 +481,7 @@ export default function SerpLandscape({ articleId, keywords = [] }) {
                     isOurDomain={item.domain && item.domain.includes(ourDomain)}
                     side="right"
                   />
-                  {item.domain && rightOnly.has(item.domain) && (
+                  {rightOnly.has(getItemIdentity(item)) && (
                     <div className="absolute -left-1 top-0">
                       <StatusBadge type="new" />
                     </div>
