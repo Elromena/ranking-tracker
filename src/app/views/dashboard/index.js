@@ -172,12 +172,6 @@ export default function DashboardView({ articles, onSelectArticle, onAddArticle,
                     {article.category && (
                       <Badge variant="default" className="text-[10px]">{article.category}</Badge>
                     )}
-                    <span
-                      className="text-[11px] text-slate-400 truncate"
-                      title={`slug: /${article.slug}`}
-                    >
-                      slug: /{article.slug}
-                    </span>
                   </div>
                   {firstLocaleUrl && (
                     <div className="text-[11px] text-slate-500 truncate mt-0.5" title={firstLocaleUrl}>

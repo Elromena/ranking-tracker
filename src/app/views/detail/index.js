@@ -531,7 +531,6 @@ export default function ArticleDetailView({
                   : data.category.name}
               </Badge>
             )}
-            {data.slug && <span>/{data.slug}</span>}
             <span className="flex items-center gap-1">
               <Globe className="w-3 h-3" />
               {locales.length} locale{locales.length !== 1 ? "s" : ""}
