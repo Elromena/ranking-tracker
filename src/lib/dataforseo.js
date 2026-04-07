@@ -344,6 +344,7 @@ export async function batchSerpPositions({
   country = "us",
   language = "en",
   articleUrl = null,
+  articleUrlMap = null,
   provider = PROVIDERS.DATAFORSEO,
   serpApiKey = process.env.SERPAPI_KEY,
 }) {
@@ -356,6 +357,7 @@ export async function batchSerpPositions({
       country,
       language,
       articleUrl,
+      articleUrlMap,
     });
   } else if (provider === PROVIDERS.SERPAPI) {
     return await processWithSerpAPI({
@@ -381,10 +383,11 @@ export async function getHistoricalSerpPositions({
   date,
   country = "us",
   language = "en",
+  articleUrl = null,
+  articleUrlMap = null,
 }) {
   const results = {};
 
-  // Map country codes to location codes
   const locationMap = {
     us: 2840,
     gb: 2826,
@@ -395,7 +398,6 @@ export async function getHistoricalSerpPositions({
   };
   const locationCode = locationMap[country] || 2840;
 
-  // Process in batches of 10 (historical API is more expensive)
   const batches = [];
   for (let i = 0; i < keywords.length; i += 10) {
     batches.push(keywords.slice(i, i + 10));
@@ -407,7 +409,7 @@ export async function getHistoricalSerpPositions({
       location_code: locationCode,
       language_code: language,
       date_from: date,
-      date_to: date, // Same date = specific day snapshot
+      date_to: date,
     }));
 
     try {
@@ -421,29 +423,45 @@ export async function getHistoricalSerpPositions({
         const result = task.result?.[0];
         if (!kw || !result) continue;
 
+        const kwArticleUrl = articleUrlMap?.[kw] || articleUrl;
+        const articlePath = kwArticleUrl ? normalizeUrl(kwArticleUrl) : null;
+
         const items = result.items || [];
         let position = null;
         let foundUrl = null;
+        const otherDomainUrls = [];
+        const allDomainUrls = [];
 
         for (const item of items) {
-          if (item.type === "organic" && item.domain?.includes(targetDomain)) {
+          if (item.type !== "organic" || !item.domain?.includes(targetDomain)) continue;
+
+          allDomainUrls.push({ url: item.url, position: item.rank_absolute });
+
+          if (articlePath && item.url) {
+            const itemPath = normalizeUrl(item.url);
+            if (pathMatchesArticle(itemPath, articlePath)) {
+              if (position === null) {
+                position = item.rank_absolute;
+                foundUrl = item.url;
+              }
+              continue;
+            }
+          }
+
+          if (!articlePath && position === null) {
             position = item.rank_absolute;
             foundUrl = item.url;
-            break;
+            continue;
+          }
+
+          if (item.url) {
+            otherDomainUrls.push({ url: item.url, position: item.rank_absolute });
           }
         }
 
         const serpFeatures = [];
         for (const item of items) {
-          if (
-            [
-              "featured_snippet",
-              "people_also_ask",
-              "local_pack",
-              "knowledge_graph",
-              "video",
-            ].includes(item.type)
-          ) {
+          if (SERP_FEATURE_TYPES.has(item.type)) {
             serpFeatures.push(
               item.type === "people_also_ask" ? "paa" : item.type,
             );
@@ -454,6 +472,8 @@ export async function getHistoricalSerpPositions({
           position,
           serpFeatures: [...new Set(serpFeatures)],
           foundUrl,
+          otherDomainUrls,
+          allDomainUrls,
         };
       }
     } catch (error) {
@@ -483,10 +503,16 @@ const SERP_FEATURE_TYPES = new Set([
 function normalizeUrl(url) {
   try {
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-    return u.pathname.replace(/\/$/, "");
+    return u.pathname.replace(/\/$/, "").toLowerCase();
   } catch {
-    return url;
+    return url.toLowerCase();
   }
+}
+
+function pathMatchesArticle(itemPath, articlePath) {
+  if (itemPath === articlePath) return true;
+  if (articlePath && articlePath.length > 1 && itemPath.endsWith(articlePath)) return true;
+  return false;
 }
 
 async function processWithDataForSEO({
@@ -495,9 +521,9 @@ async function processWithDataForSEO({
   country,
   language,
   articleUrl = null,
+  articleUrlMap = null,
 }) {
   const results = {};
-  const articlePath = articleUrl ? normalizeUrl(articleUrl) : null;
 
   const tasks = keywords.map((kw) => ({
     keyword: kw,
@@ -549,23 +575,26 @@ async function processWithDataForSEO({
 
   for (const { keyword, success, data, error } of successfulResults) {
     if (!success || !data) {
-      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], top20: [], error: error || "Failed to fetch data" };
+      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], allDomainUrls: [], top20: [], error: error || "Failed to fetch data" };
       continue;
     }
 
     const result = data.result?.[0];
     if (!result) {
-      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], top20: [] };
+      results[keyword] = { position: null, serpFeatures: [], foundUrl: null, otherDomainUrls: [], allDomainUrls: [], top20: [] };
       continue;
     }
+
+    const kwArticleUrl = articleUrlMap?.[keyword] || articleUrl;
+    const articlePath = kwArticleUrl ? normalizeUrl(kwArticleUrl) : null;
 
     const items = result.items || [];
     let position = null;
     let foundUrl = null;
     const otherDomainUrls = [];
+    const allDomainUrls = [];
     const serpFeatures = new Set();
 
-    // Scan ALL items for domain matches and SERP features
     for (const item of items) {
       if (SERP_FEATURE_TYPES.has(item.type)) {
         serpFeatures.add(item.type === "people_also_ask" ? "paa" : item.type);
@@ -574,10 +603,13 @@ async function processWithDataForSEO({
       const isDomainMatch = item.domain && item.domain.includes(targetDomain);
       if (!isDomainMatch) continue;
 
-      // Check if this is the specific article URL
+      if (item.url && item.type === "organic") {
+        allDomainUrls.push({ url: item.url, position: item.rank_absolute });
+      }
+
       if (articlePath && item.url) {
         const itemPath = normalizeUrl(item.url);
-        if (itemPath === articlePath) {
+        if (pathMatchesArticle(itemPath, articlePath)) {
           if (position === null) {
             position = item.rank_absolute;
             foundUrl = item.url;
@@ -586,14 +618,12 @@ async function processWithDataForSEO({
         }
       }
 
-      // If no articleUrl provided, first domain match is our position (backward compat)
       if (!articlePath && item.type === "organic" && position === null) {
         position = item.rank_absolute;
         foundUrl = item.url;
         continue;
       }
 
-      // Other domain URLs = potential cannibalization
       if (item.url && item.type === "organic") {
         otherDomainUrls.push({ url: item.url, position: item.rank_absolute });
       }
@@ -618,6 +648,7 @@ async function processWithDataForSEO({
       serpFeatures: [...serpFeatures],
       foundUrl,
       otherDomainUrls,
+      allDomainUrls,
       top20,
     };
   }
@@ -778,4 +809,4 @@ function serpApiSearch(params) {
 }
 
 // Export provider constants for external use
-export { PROVIDERS, clearAuthCache };
+export { PROVIDERS, clearAuthCache, normalizeUrl, pathMatchesArticle };

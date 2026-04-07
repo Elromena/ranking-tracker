@@ -120,22 +120,22 @@ export async function POST(request) {
         if (weekOffset === 0 || useHistoricalSerp) {
           try {
             if (weekOffset === 0) {
-              // Current week: Use live SERP
               dfsData = await batchSerpPositions({
                 keywords: kwStrings,
                 targetDomain,
                 country,
                 language,
+                articleUrl: url.url,
               });
               log.push(`  ${url.title}: DFS live returned ${Object.keys(dfsData).length} positions`);
             } else {
-              // Historical week: Use historical SERP API
               dfsData = await getHistoricalSerpPositions({
                 keywords: kwStrings,
                 targetDomain,
                 date: formatDate(snapshotDate),
                 country,
                 language,
+                articleUrl: url.url,
               });
               log.push(`  ${url.title}: DFS historical (${formatDate(snapshotDate)}) returned ${Object.keys(dfsData).length} positions`);
             }

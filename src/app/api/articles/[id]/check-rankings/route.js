@@ -1,4 +1,4 @@
-import { batchSerpPositions, PROVIDERS } from "@/lib/dataforseo";
+import { batchSerpPositions, PROVIDERS, normalizeUrl, pathMatchesArticle } from "@/lib/dataforseo";
 import { prisma } from "@/lib/db";
 import { getPageTraffic, getLastWeekRange } from "@/lib/gsc";
 import { NextResponse } from "next/server";
@@ -105,7 +105,12 @@ export async function POST(request, { params }) {
       const uniqueKeywords = [...batch.keywords];
       totalApiCalls += uniqueKeywords.length;
 
-      const firstArticleUrl = batch.kwMeta[0]?.articleUrl || null;
+      const articleUrlMap = {};
+      for (const meta of batch.kwMeta) {
+        if (meta.articleUrl && !articleUrlMap[meta.keyword]) {
+          articleUrlMap[meta.keyword] = meta.articleUrl;
+        }
+      }
 
       let dfsData = {};
       try {
@@ -114,7 +119,7 @@ export async function POST(request, { params }) {
           targetDomain,
           country: batch.country,
           language: batch.language,
-          articleUrl: firstArticleUrl,
+          articleUrlMap,
           provider: PROVIDERS.DATAFORSEO,
         });
       } catch (e) {
@@ -125,8 +130,34 @@ export async function POST(request, { params }) {
 
       for (const meta of batch.kwMeta) {
         const dfs = dfsData[meta.keyword] || {};
+
+        let currentPos = dfs.position ?? null;
+        let matchedFoundUrl = dfs.foundUrl || null;
+        let metaOtherUrls = dfs.otherDomainUrls || [];
+
+        const metaArticlePath = meta.articleUrl ? normalizeUrl(meta.articleUrl) : null;
+        const batchArticlePath = articleUrlMap[meta.keyword] ? normalizeUrl(articleUrlMap[meta.keyword]) : null;
+
+        if (metaArticlePath && batchArticlePath && metaArticlePath !== batchArticlePath) {
+          currentPos = null;
+          matchedFoundUrl = null;
+          metaOtherUrls = [];
+
+          const allMatches = dfs.allDomainUrls || [];
+          for (const match of allMatches) {
+            const matchPath = normalizeUrl(match.url);
+            if (pathMatchesArticle(matchPath, metaArticlePath)) {
+              if (currentPos === null) {
+                currentPos = match.position;
+                matchedFoundUrl = match.url;
+              }
+            } else {
+              metaOtherUrls.push(match);
+            }
+          }
+        }
+
         const prevPos = meta.prevSnapshot?.serpPosition || null;
-        const currentPos = dfs.position || null;
         const posChange = prevPos && currentPos ? prevPos - currentPos : 0;
 
         try {
@@ -147,16 +178,16 @@ export async function POST(request, { params }) {
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
-              foundUrl: dfs.foundUrl || null,
-              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
+              foundUrl: matchedFoundUrl,
+              otherUrls: metaOtherUrls.length ? JSON.stringify(metaOtherUrls) : null,
             },
             update: {
               serpPosition: currentPos,
               serpFeatures: dfs.serpFeatures?.join(",") || null,
               prevPosition: prevPos,
               posChange,
-              foundUrl: dfs.foundUrl || null,
-              otherUrls: dfs.otherDomainUrls?.length ? JSON.stringify(dfs.otherDomainUrls) : null,
+              foundUrl: matchedFoundUrl,
+              otherUrls: metaOtherUrls.length ? JSON.stringify(metaOtherUrls) : null,
             },
           });
           totalKeywordsProcessed++;
