@@ -87,6 +87,71 @@ export async function getPageTraffic({ url, startDate, endDate }) {
 }
 
 /**
+ * Get daily page-level traffic for a URL.
+ * Uses ['date', 'page'] dimensions so GSC returns one row per day per page variant.
+ * Returns an array of { date, clicks, impressions, ctr, position } sorted by date.
+ */
+export async function getDailyPageTraffic({ url, startDate, endDate }) {
+  const client = getClient();
+  const siteUrl = process.env.GSC_PROPERTY;
+
+  if (!siteUrl) throw new Error('GSC_PROPERTY not set');
+
+  let urlPath;
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    urlPath = parsed.pathname;
+  } catch {
+    urlPath = url;
+  }
+
+  try {
+    const response = await client.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: ['date', 'page'],
+        dimensionFilterGroups: [{
+          filters: [{
+            dimension: 'page',
+            operator: 'contains',
+            expression: urlPath,
+          }],
+        }],
+        rowLimit: 1000,
+      },
+    });
+
+    const rows = response.data.rows || [];
+    if (rows.length === 0) return [];
+
+    const byDate = {};
+    for (const row of rows) {
+      const date = row.keys[0];
+      if (!byDate[date]) {
+        byDate[date] = { clicks: 0, impressions: 0, weightedPosition: 0 };
+      }
+      byDate[date].clicks += row.clicks;
+      byDate[date].impressions += row.impressions;
+      byDate[date].weightedPosition += row.position * row.impressions;
+    }
+
+    return Object.entries(byDate)
+      .map(([date, d]) => ({
+        date,
+        clicks: d.clicks,
+        impressions: d.impressions,
+        ctr: d.impressions > 0 ? d.clicks / d.impressions : 0,
+        position: d.impressions > 0 ? d.weightedPosition / d.impressions : null,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch (error) {
+    throw new Error(`GSC daily API error for ${url}: ${error.message}`);
+  }
+}
+
+/**
  * Get top queries for a URL — used for keyword discovery.
  * Returns per-query breakdown (different from getPageTraffic which is page-level totals).
  */

@@ -2,10 +2,10 @@ import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { batchSerpPositions, getHistoricalSerpPositions } from "@/lib/dataforseo";
 
-let getPageTraffic, formatDate;
+let getDailyPageTraffic, formatDate;
 try {
   const gsc = await import("@/lib/gsc");
-  getPageTraffic = gsc.getPageTraffic;
+  getDailyPageTraffic = gsc.getDailyPageTraffic;
   formatDate = gsc.formatDate;
 } catch (e) {
   formatDate = (date) => date.toISOString().split('T')[0];
@@ -147,32 +147,35 @@ export async function POST(request) {
         }
 
         // 4b. Pull page-level GSC traffic (OPTIONAL)
-        if (getPageTraffic) {
+        if (getDailyPageTraffic) {
           try {
-            const traffic = await getPageTraffic({
+            const dailyRows = await getDailyPageTraffic({
               url: url.url,
               startDate: formatDate(startDate),
               endDate: formatDate(endDate),
             });
-            if (traffic) {
+            for (const row of dailyRows) {
+              const rowDate = new Date(row.date + "T00:00:00Z");
               await prisma.pageTraffic.upsert({
-                where: { urlId_date: { urlId: url.id, date: snapshotDate } },
+                where: { urlId_date: { urlId: url.id, date: rowDate } },
                 create: {
                   urlId: url.id,
-                  date: snapshotDate,
-                  clicks: traffic.clicks || 0,
-                  impressions: traffic.impressions || 0,
-                  ctr: traffic.ctr || null,
-                  position: traffic.position || null,
+                  date: rowDate,
+                  clicks: row.clicks || 0,
+                  impressions: row.impressions || 0,
+                  ctr: row.ctr || null,
+                  position: row.position || null,
                 },
                 update: {
-                  clicks: traffic.clicks || 0,
-                  impressions: traffic.impressions || 0,
-                  ctr: traffic.ctr || null,
-                  position: traffic.position || null,
+                  clicks: row.clicks || 0,
+                  impressions: row.impressions || 0,
+                  ctr: row.ctr || null,
+                  position: row.position || null,
                 },
               });
-              log.push(`  ${url.title}: GSC page traffic stored`);
+            }
+            if (dailyRows.length > 0) {
+              log.push(`  ${url.title}: GSC daily traffic stored (${dailyRows.length} days)`);
             }
           } catch (e) {
             log.push(`  ${url.title}: GSC skipped - ${e.message}`);

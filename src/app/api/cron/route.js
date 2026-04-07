@@ -1,7 +1,7 @@
 import { batchSerpPositions, PROVIDERS, normalizeUrl, pathMatchesArticle } from "@/lib/dataforseo";
 import { prisma } from "@/lib/db";
 import { sendMessage } from "@/lib/telegram";
-import { getPageTraffic, getLastWeekRange } from "@/lib/gsc";
+import { getDailyPageTraffic, getLastWeekRange } from "@/lib/gsc";
 import { NextResponse } from "next/server";
 
 const COST_PER_CALL = 0.0025;
@@ -312,31 +312,32 @@ export async function POST(request) {
           processedUrls.add(loc.id);
 
           try {
-            const traffic = await getPageTraffic({
+            const dailyRows = await getDailyPageTraffic({
               url: loc.url,
               startDate: gscStart,
               endDate: gscEnd,
             });
 
-            if (!traffic) continue;
-
-            await prisma.pageTraffic.upsert({
-              where: { urlId_date: { urlId: loc.id, date: today } },
-              create: {
-                urlId: loc.id,
-                date: today,
-                clicks: traffic.clicks || 0,
-                impressions: traffic.impressions || 0,
-                ctr: traffic.ctr || null,
-                position: traffic.position || null,
-              },
-              update: {
-                clicks: traffic.clicks || 0,
-                impressions: traffic.impressions || 0,
-                ctr: traffic.ctr || null,
-                position: traffic.position || null,
-              },
-            });
+            for (const row of dailyRows) {
+              const rowDate = new Date(row.date + "T00:00:00Z");
+              await prisma.pageTraffic.upsert({
+                where: { urlId_date: { urlId: loc.id, date: rowDate } },
+                create: {
+                  urlId: loc.id,
+                  date: rowDate,
+                  clicks: row.clicks || 0,
+                  impressions: row.impressions || 0,
+                  ctr: row.ctr || null,
+                  position: row.position || null,
+                },
+                update: {
+                  clicks: row.clicks || 0,
+                  impressions: row.impressions || 0,
+                  ctr: row.ctr || null,
+                  position: row.position || null,
+                },
+              });
+            }
             gscCount++;
           } catch (gscErr) {
             log.push(`GSC skip ${loc.locale}: ${gscErr.message}`);
